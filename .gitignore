@@ -1,0 +1,50 @@
+## Android / Gradle
+*.iml
+*.ipr
+*.iws
+.gradle/
+**/.gradle/
+local.properties
+/local.properties
+
+## IDE
+.idea/
+/.idea/
+*.swp
+.DS_Store
+Thumbs.db
+.kotlin/
+.codeassistant/
+.codeassistantmodes
+backup/
+
+## Build outputs
+build/
+/build/
+**/build/
+captures/
+/captures/
+*.apk
+*.ap_
+*.aab
+/*.png
+/*.jpg
+/*.jpeg
+/*.webp
+/*.htm
+/*.html
+
+## Native build
+.externalNativeBuild/
+**/.externalNativeBuild/
+.cxx/
+**/.cxx/
+
+## Signing / secrets
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+**/google-services.json
+*.env

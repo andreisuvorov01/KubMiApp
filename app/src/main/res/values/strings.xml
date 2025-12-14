@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">КубМИ</string>
+    <string name="back">Назад</string>
+    <string name="refresh">Обновить</string>
+    <string name="settings">Настройки</string>
+    <string name="admin_panel">Админ-панель</string>
+    <string name="news">Новости</string>
+    <string name="institute_news">Новости об институте</string>
+    <string name="news_details">Детали новости</string>
+    <string name="about_institute">Об институте</string>
+    <string name="student_schedule">Расписание для студентов</string>
+    <string name="teacher_schedule">Расписание для преподавателей</string>
+    <string name="select_group">Выберите группу</string>
+    <string name="select_teacher">Выберите преподавателя</string>
+    <string name="total_groups">Всего групп: %1$d</string>
+    <string name="total_teachers">Всего преподавателей: %1$d</string>
+    <string name="loading_news">Загрузка новостей...</string>
+    <string name="loading">Загрузка...</string>
+    <string name="history">История</string>
+    <string name="management">Руководство</string>
+    <string name="faculties">Факультеты</string>
+    <string name="contacts">Контакты</string>
+    <string name="sections">Разделы</string>
+    <string name="institute_history">История института</string>
+    <string name="institute_history_description">Кубанский институт международного предпринимательства и менеджмента - ведущее образовательное учреждение региона.</string>
+    <string name="management_description">Информация о руководстве института</string>
+    <string name="faculties_and_departments">Факультеты и кафедры</string>
+    <string name="faculties_description">Информация о факультетах</string>
+    <string name="contact_information">Контактная информация</string>
+    <string name="address">Адрес: г. Краснодар</string>
+    <string name="phone">Телефон: +7 (861) XXX-XX-XX</string>
+    <string name="email">Email: info@kubmi.ru</string>
+    <string name="admin_set_password_title">Установка пароля администратора</string>
+    <string name="admin_enter_new_password">Введите новый пароль:</string>
+    <string name="set_password">Установить пароль</string>
+    <string name="admin_login_title">Вход в админ-панель</string>
+    <string name="admin_enter_password">Введите пароль:</string>
+    <string name="login">Войти</string>
+    <string name="cancel">Отмена</string>
+    <string name="close">Закрыть</string>
+    <string name="change_password">Изменить пароль</string>
+    <string name="update_settings">Настройки обновления</string>
+    <string name="clear_cache">Очистить кэш</string>
+    <string name="exit_app">Выход из приложения</string>
+    <string name="password">Пароль</string>
+    <string name="error">Ошибка</string>
+    <string name="news_image_desc">Изображение новости: %1$s</string>
+    <string name="news_image_description">Изображение новости: %1$s</string>
+    <string name="lecture">Лекция</string>
+    <string name="practice">Практика</string>
+    <string name="lab_work">Лаб. работа</string>
+    <string name="news_title">Новости</string>
+    <string name="about">Об институте</string>
+    <string name="audience">Аудитория</string>
+
+    <!-- Panel-style sections -->
+    <string name="select_schedule">Выберите расписание</string>
+    <string name="need_help">Нужна помощь?</string>
+    <string name="call">Позвонить</string>
+    <string name="write_email">Написать</string>
+    <string name="open_site">Открыть сайт</string>
+
+    <!-- Contact values (match kubmi.ru panel page) -->
+    <string name="panel_phone_value">+7 (861) 991-42-88</string>
+    <string name="panel_phone_tel">+78619914288</string>
+    <string name="panel_address_value">350015 г. Краснодар, ул. Буденного, 198</string>
+    <string name="email_value">info@kubmi.ru</string>
+    <string name="no_schedule_found">Расписание не найдено</string>
+    <string name="time">Время</string>
+    <string name="subject">Предмет</string>
+    <string name="type">Тип</string>
+    <string name="room">Кабинет</string>
+    <string name="teacher">Преподаватель</string>
+    <string name="group">Группа</string>
+</resources>
