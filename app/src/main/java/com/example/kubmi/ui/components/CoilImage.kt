@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.size.Precision
+import coil.size.Scale
 
 /**
  * A reusable composable for loading and displaying images with Coil.
@@ -62,6 +64,11 @@ fun CoilImage(
     AsyncImage(
         model = ImageRequest.Builder(LocalContext.current)
             .data(imageUrl)
+            // Decode smaller bitmaps for faster load + lower memory.
+            // Thumbnails across the app shouldn't decode huge 1500px+ images.
+            .size(640)
+            .precision(Precision.INEXACT)
+            .scale(if (contentScale == ContentScale.Crop) Scale.FILL else Scale.FIT)
             .crossfade(true)
             .build(),
         contentDescription = contentDescription,

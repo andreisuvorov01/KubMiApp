@@ -32,4 +32,12 @@ object Migrations {
             database.execSQL("CREATE INDEX IF NOT EXISTS `idx_schedule_time` ON `schedule` (`dayOfWeek`, `timeSlot`)")
         }
     }
+
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // Extend `news` table to store full article content.
+            database.execSQL("ALTER TABLE `news` ADD COLUMN `fullText` TEXT")
+            database.execSQL("ALTER TABLE `news` ADD COLUMN `contentBlocksJson` TEXT")
+        }
+    }
 }

@@ -9,24 +9,31 @@ import com.example.kubmi.domain.model.ManagementPerson
 import com.example.kubmi.domain.model.AboutFaculty
 import com.example.kubmi.domain.model.ContactInfo
 import com.example.kubmi.domain.model.Achievement
+import com.example.kubmi.domain.model.NewsContentBlock
 import com.example.kubmi.domain.model.ScheduleIndexEntry
 import com.example.kubmi.domain.model.ScheduleCellContent
 import com.example.kubmi.domain.model.ScheduleTableRow
 import com.example.kubmi.domain.model.WeeklyScheduleData
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
+import org.jsoup.safety.Safelist
+import java.util.regex.Pattern
 import timber.log.Timber
 import android.util.Log
 import java.util.UUID
 import java.util.Locale
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.net.URI
 import kotlinx.coroutines.delay
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class WebScraper @Inject constructor() {
+    private companion object {
+        const val INSTITUTE_HISTORY_URL = "https://kubmi.ru/institut/istoriya-instituta/"
+    }
 
     // Кэшируем часто используемые селекторы
     // News grid on the panel page is rendered by Essential Addons (EAEL):
@@ -75,9 +82,33 @@ class WebScraper @Inject constructor() {
 
     private suspend fun fetchDoc(url: String): org.jsoup.nodes.Document {
         return Jsoup.connect(url)
-            .timeout(15000)
+            .followRedirects(true)
+            .timeout(30000)
+            .maxBodySize(0)
+            .referrer("https://kubmi.ru/")
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header("Accept-Language", "ru-RU,ru;q=0.9,en-US;q=0.7,en;q=0.6")
             .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
             .get()
+    }
+
+    private suspend fun fetchInstituteHistoryDoc(): org.jsoup.nodes.Document = fetchDoc(INSTITUTE_HISTORY_URL)
+
+    private fun buildHtmlFromContent(contentRoot: Element): String {
+        // Remove noisy blocks if present to reduce junk
+        contentRoot.select("script, style, nav, header, footer, form, noscript").remove()
+
+        // Keep headings, paragraphs, lists, emphasis, links
+        val safelist = Safelist.relaxed()
+            .addTags("h1", "h2", "h3", "h4")
+            .removeTags("img") // no images
+
+        val cleaner = org.jsoup.safety.Cleaner(safelist)
+        val cleaned = cleaner.clean(contentRoot.ownerDocument()!!)
+
+        // Extract HTML of the cleaned body/content section
+        val html = cleaned.selectFirst("body")?.html().orEmpty()
+        return html.ifBlank { "История института недоступна." }
     }
 
     private enum class OwnerKind { GROUP, TEACHER }
@@ -304,6 +335,349 @@ class WebScraper @Inject constructor() {
             Timber.e(e, "Failed to scrape news from kubmi.ru/stranicza-dlya-panelej/")
             emptyList()
         }
+    }
+
+    data class NewsArticleScrapeResult(
+        val title: String,
+        val blocks: List<NewsContentBlock>,
+        val fullText: String
+    )
+
+    /**
+     * Scrape a single news article page and extract content blocks (text + inline images).
+     * This is used for the detailed news screen (full article reading).
+     */
+    @RequiresApi(Build.VERSION_CODES.O)
+    suspend fun scrapeNewsArticle(url: String): NewsArticleScrapeResult {
+        val doc = fetchDoc(url)
+
+        // Title from page H1.
+        val title = normalizeSpaces(doc.selectFirst("h1")?.text().orEmpty())
+        
+        fun isInsideBadContainer(el: Element): Boolean {
+            // Don't pick nav/header/footer/sidebar containers.
+            val badTags = setOf("header", "footer", "nav", "aside")
+            if (badTags.contains(el.tagName().lowercase(Locale.ROOT))) return true
+            if (el.parents().any { badTags.contains(it.tagName().lowercase(Locale.ROOT)) }) return true
+            return false
+        }
+        
+        fun scoreCandidate(el: Element): Int {
+            val text = normalizeSpaces(el.text())
+            val textLen = text.length
+            val pCount = el.select("p").size
+            val liCount = el.select("li").size
+            val quoteCount = el.select("blockquote").size
+            val imgCount = el.select("img").size
+            val hasBadHeadline = text.contains("Другие посты", ignoreCase = true) ||
+                text.contains("Поделиться", ignoreCase = true) ||
+                text.contains("Последние новости", ignoreCase = true)
+            val looksLikeOnlyImage = textLen < 80 && imgCount > 0 && (pCount + liCount) == 0
+            var score = textLen + 60 * (pCount + liCount) + 25 * quoteCount
+            if (looksLikeOnlyImage) score -= 800
+            if (hasBadHeadline) score -= 400
+            // Prefer "content" containers over generic wrappers.
+            val cls = el.className().lowercase(Locale.ROOT)
+            if (cls.contains("entry-content") || cls.contains("post-content") || cls.contains("post-content")) score += 250
+            if (cls.contains("elementor-text-editor")) score += 200
+            if (cls.contains("elementor-widget-theme-post-content")) score += 250
+            return score
+        }
+        
+        fun selectContentRoot(): Element {
+            val scopes = buildList {
+                doc.selectFirst("article")?.let { add(it) }
+                add(doc)
+            }
+
+            // Fast-path: Elementor post content widget is usually the most correct root.
+            scopes.asSequence()
+                .flatMap { it.select(".elementor-widget-theme-post-content").asSequence() }
+                .filterNot { isInsideBadContainer(it) }
+                .filter { el ->
+                    val txtLen = normalizeSpaces(el.text()).length
+                    val blocks = el.select("p, h2, h3, h4, h5, h6, blockquote, li").size
+                    txtLen >= 120 || blocks >= 4
+                }
+                .firstOrNull()
+                ?.let { return it }
+
+            val selectors = listOf(
+                ".entry-content",
+                ".post-content",
+                ".elementor-widget-theme-post-content",
+                ".elementor-widget-theme-post-content .elementor-widget-container",
+                ".elementor-text-editor",
+                ".elementor-widget-theme-post-content .elementor-text-editor",
+            )
+            
+            val candidates = LinkedHashSet<Element>()
+            for (sel in selectors) {
+                for (scope in scopes) {
+                    scope.select(sel).forEach { el ->
+                        if (!isInsideBadContainer(el)) {
+                            candidates.add(el)
+                        }
+                    }
+                }
+            }
+            
+            // Very weak fallback: any container with meaningful amount of text.
+            if (candidates.isEmpty()) {
+                for (scope in scopes) {
+                    scope.select(".elementor-widget-container").forEach { el ->
+                        if (!isInsideBadContainer(el) && normalizeSpaces(el.text()).length >= 120) {
+                            candidates.add(el)
+                        }
+                    }
+                }
+            }
+            
+            val best = candidates.maxByOrNull { scoreCandidate(it) } ?: (doc.selectFirst("article") ?: doc)
+
+            // Debug: log top candidates and what was selected (helps diagnose "blocks=2" cases).
+            runCatching {
+                data class Cand(val score: Int, val tag: String, val cls: String, val textLen: Int, val p: Int, val h: Int, val img: Int)
+                val top = candidates
+                    .asSequence()
+                    .map { el ->
+                        val score = scoreCandidate(el)
+                        val tag = el.tagName()
+                        val cls = el.className()
+                        val textLen = normalizeSpaces(el.text()).length
+                        val p = el.select("p").size
+                        val h = el.select("h2,h3,h4,h5,h6").size
+                        val img = el.select("img").size
+                        Cand(score, tag, cls, textLen, p, h, img)
+                    }
+                    .sortedByDescending { it.score }
+                    .take(5)
+                    .toList()
+                val bTextLen = normalizeSpaces(best.text()).length
+                val bP = best.select("p").size
+                val bH = best.select("h2,h3,h4,h5,h6").size
+                val bImg = best.select("img").size
+                Log.i(
+                    "KubMI_Scraper",
+                    "scrapeNewsArticle(): selectContentRoot url=$url thread=${Thread.currentThread().name} bestTag=${best.tagName()} bestClass=${best.className()} bestTextLen=$bTextLen bestP=$bP bestH=$bH bestImg=$bImg top=$top"
+                )
+            }
+
+            return best
+        }
+        
+        val contentRoot = selectContentRoot()
+        
+        // Remove obvious non-article noise inside the chosen root.
+        contentRoot.select("script, style, noscript, header, footer, nav, aside, form, button").remove()
+        contentRoot.select(
+            ".sharedaddy, .jp-relatedposts, .related, .yarpp-related, .post-navigation, .nav-links, .comments-area, .comment-respond"
+        ).remove()
+
+        val blocks = mutableListOf<NewsContentBlock>()
+
+        fun resolveUrl(raw: String): String? {
+            val r = raw.trim()
+            if (r.isBlank()) return null
+            if (r.startsWith("http://") || r.startsWith("https://")) return r
+            if (r.startsWith("//")) return "https:$r"
+            return try {
+                URI(doc.baseUri()).resolve(r).toString()
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        fun extractImageUrl(img: Element): String? {
+            fun isPlaceholder(u: String): Boolean {
+                val t = u.trim()
+                if (t.isBlank()) return true
+                val lower = t.lowercase(Locale.ROOT)
+                if (lower.startsWith("data:")) return true
+                if (lower == "about:blank") return true
+                if (lower.startsWith("blob:")) return true
+                return false
+            }
+
+            fun pickFirstNonPlaceholder(vararg rawCandidates: String): String? {
+                for (raw in rawCandidates) {
+                    val r = raw.trim()
+                    if (r.isBlank()) continue
+                    val resolved = resolveUrl(r) ?: continue
+                    if (!isPlaceholder(resolved)) return resolved
+                }
+                return null
+            }
+
+            fun bestFromSrcset(srcSetRaw: String): String? {
+                val srcSet = srcSetRaw.trim()
+                if (srcSet.isBlank()) return null
+
+                data class Candidate(val url: String, val weight: Double)
+                val candidates = srcSet.split(",")
+                    .mapNotNull { part ->
+                        val p = part.trim()
+                        if (p.isBlank()) return@mapNotNull null
+                        val pieces = p.split(Regex("\\s+"))
+                        val u = pieces.getOrNull(0).orEmpty()
+                        val d = pieces.getOrNull(1).orEmpty()
+                        val weight = when {
+                            d.endsWith("w") -> d.removeSuffix("w").toDoubleOrNull() ?: 0.0
+                            d.endsWith("x") -> (d.removeSuffix("x").toDoubleOrNull() ?: 0.0) * 1000.0
+                            else -> 0.0
+                        }
+                        if (u.isBlank()) null else Candidate(u, weight)
+                    }
+
+                // Prefer a "medium" image to reduce download/decode time:
+                // - if we have 3+ candidates, pick the median by weight (usually ~768w/1024w)
+                // - if 2 candidates, pick the larger one (usually acceptable)
+                // - else pick the only one
+                val sorted = candidates.sortedBy { it.weight }
+                val pickedUrl = when {
+                    sorted.size >= 3 -> sorted[sorted.size / 2].url
+                    sorted.size == 2 -> sorted.last().url
+                    else -> sorted.firstOrNull()?.url
+                } ?: return null
+
+                val resolved = resolveUrl(pickedUrl) ?: return null
+                return if (isPlaceholder(resolved)) null else resolved
+            }
+
+            // Prefer lazy-load attributes over `src` because many pages use placeholder `src=data:image/svg+xml,...`.
+            val dataLazySrc = img.absUrl("data-lazy-src").ifBlank { img.attr("data-lazy-src") }
+            val dataSrc = img.absUrl("data-src").ifBlank { img.attr("data-src") }
+            val dataOriginal = img.absUrl("data-original").ifBlank { img.attr("data-original") }
+            val src = img.absUrl("src").ifBlank { img.attr("src") }
+
+            pickFirstNonPlaceholder(dataLazySrc, dataSrc, dataOriginal, src)?.let { return it }
+
+            // srcset variants (including lazy-load srcsets)
+            bestFromSrcset(img.attr("data-lazy-srcset"))?.let { return it }
+            bestFromSrcset(img.attr("data-srcset"))?.let { return it }
+            bestFromSrcset(img.attr("srcset"))?.let { return it }
+
+            return null
+        }
+
+        fun extractVideoUrl(el: Element): String? {
+            fun isVideoUrl(u: String): Boolean {
+                val lower = u.lowercase(Locale.ROOT)
+                return lower.contains("youtube.com") ||
+                    lower.contains("youtu.be") ||
+                    lower.contains("rutube.") ||
+                    lower.contains("vk.com/video") ||
+                    lower.contains("vimeo.com") ||
+                    lower.contains("ok.ru/video") ||
+                    lower.contains("dzen.ru/video") ||
+                    lower.contains("/embed") ||
+                    lower.contains("player")
+            }
+
+            fun candidateFromAttr(attr: String): String? {
+                val v = el.absUrl(attr).ifBlank { el.attr(attr) }.trim()
+                if (v.isBlank()) return null
+                val resolved = resolveUrl(v) ?: return null
+                return if (isVideoUrl(resolved)) resolved else null
+            }
+
+            return when (el.tagName().lowercase(Locale.ROOT)) {
+                "iframe" -> {
+                    candidateFromAttr("data-lazy-src")
+                        ?: candidateFromAttr("data-src")
+                        ?: candidateFromAttr("src")
+                }
+                "video" -> {
+                    val direct = candidateFromAttr("src")
+                    if (direct != null) direct
+                    else {
+                        val source = el.selectFirst("source[src]")
+                        if (source != null) {
+                            val v = source.absUrl("src").ifBlank { source.attr("src") }.trim()
+                            val resolved = resolveUrl(v) ?: return null
+                            if (isVideoUrl(resolved)) resolved else null
+                        } else null
+                    }
+                }
+                else -> null
+            }
+        }
+
+        var lastTextBlock: String? = null
+        
+        fun addTextBlock(text: String) {
+            val t = normalizeSpaces(text)
+            if (t.isBlank()) return
+            if (t == lastTextBlock) return
+            blocks.add(NewsContentBlock(type = NewsContentBlock.TYPE_TEXT, text = t))
+            lastTextBlock = t
+        }
+        
+        fun addImageBlock(img: Element) {
+            val imageUrl = extractImageUrl(img)
+            if (!imageUrl.isNullOrBlank()) {
+                blocks.add(
+                    NewsContentBlock(
+                        type = NewsContentBlock.TYPE_IMAGE,
+                        imageUrl = imageUrl,
+                        alt = img.attr("alt").trim().ifBlank { null }
+                    )
+                )
+            }
+        }
+
+        fun addVideoBlock(url: String) {
+            val u = url.trim()
+            if (u.isBlank()) return
+            blocks.add(
+                NewsContentBlock(
+                    type = NewsContentBlock.TYPE_VIDEO,
+                    videoUrl = u
+                )
+            )
+        }
+
+        fun walk(el: Element) {
+            val tag = el.tagName().lowercase(Locale.ROOT)
+
+            when (tag) {
+                "script", "style", "noscript" -> return
+                "iframe", "video" -> {
+                    val v = extractVideoUrl(el)
+                    if (!v.isNullOrBlank()) addVideoBlock(v)
+                    return
+                }
+                "img" -> {
+                    addImageBlock(el)
+                    return
+                }
+                "p", "h2", "h3", "h4", "h5", "h6", "blockquote" -> {
+                    addTextBlock(el.text())
+                    // Capture inline images, but avoid descending to nested text nodes to prevent duplicates.
+                    el.select("img").forEach { img -> addImageBlock(img) }
+                    return
+                }
+                "li" -> {
+                    // treat list items as text blocks to preserve bullet semantics
+                    addTextBlock("• ${el.text()}")
+                    return
+                }
+            }
+
+            el.children().forEach { child -> walk(child) }
+        }
+
+        walk(contentRoot)
+
+        // Combine text blocks into plain full text (best-effort)
+        val fullText = blocks
+            .asSequence()
+            .filter { it.type == NewsContentBlock.TYPE_TEXT }
+            .mapNotNull { it.text?.trim()?.takeIf { t -> t.isNotBlank() } }
+            .joinToString("\n\n")
+
+        Log.i("KubMI_Scraper", "scrapeNewsArticle(): url=$url blocks=${blocks.size} fullTextLen=${fullText.length}")
+        return NewsArticleScrapeResult(title = title, blocks = blocks, fullText = fullText)
     }
 
     private fun parseNewsElement(element: Element): News? {
@@ -868,15 +1242,12 @@ class WebScraper @Inject constructor() {
      */
     suspend fun scrapeHistory(): String {
         return try {
-            val doc = Jsoup.connect("https://kubmi.ru/about/")
-                .timeout(15000)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .get()
+            val doc = fetchInstituteHistoryDoc()
+            val contentRoot = doc.selectFirst("article .entry-content, main .entry-content, .entry-content")
+                ?: doc.selectFirst("article, main")
+                ?: doc.body()
 
-            val historyElement = doc.selectFirst("div.history-content, .history, #history")
-                ?: doc.selectFirst("div.entry-content")
-                
-            historyElement?.text()?.trim() ?: "История института недоступна."
+            buildHtmlFromContent(contentRoot)
         } catch (e: Exception) {
             Timber.e(e, "Failed to scrape history")
             "Ошибка загрузки истории."
@@ -888,25 +1259,43 @@ class WebScraper @Inject constructor() {
      */
     suspend fun scrapeManagement(): List<ManagementPerson> {
         return try {
-            val doc = Jsoup.connect("https://kubmi.ru/management/")
-                .timeout(15000)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .get()
-
+            val doc = fetchInstituteHistoryDoc()
             val managementList = mutableListOf<ManagementPerson>()
-            
-            // Look for management cards or sections
-            doc.select(".management-item, .person, .management-card").forEach { element ->
-                val name = element.selectFirst(".name, h3, h4")?.text()?.trim() ?: ""
-                val position = element.selectFirst(".position, .title")?.text()?.trim() ?: ""
-                val bio = element.selectFirst(".bio, .description, p")?.text()?.trim() ?: ""
-                
-                if (name.isNotEmpty()) {
-                    managementList.add(ManagementPerson(name, position, bio))
+
+            val keywords = listOf("ректор", "проректор", "декан", "завед", "профессор", "доцент", "доктор", "кандидат", "директор", "преподавател")
+            val namePattern = Pattern.compile("([А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+\\s+[А-ЯЁ][а-яё]+)")
+
+            // Prefer bold/strong markers for names, then fall back to paragraph heuristics
+            val boldBlocks = doc.select("article .entry-content strong, article .entry-content b, .entry-content strong, .entry-content b")
+            boldBlocks.forEach { el ->
+                val name = normalizeSpaces(el.text())
+                val parentText = normalizeSpaces(el.parent()?.text() ?: "")
+                val lower = parentText.lowercase(Locale.ROOT)
+                if (name.length in 5..80 && keywords.any { lower.contains(it) }) {
+                    // Remove name from the rest to avoid duplication
+                    val rest = parentText.removePrefix(name).trim().trim(',')
+                    managementList.add(ManagementPerson(name = name, position = "", bio = rest))
                 }
             }
-            
-            managementList
+
+            // Paragraph fallback
+            val candidates = doc.select("article .entry-content p, .entry-content p")
+                .map { normalizeSpaces(it.text()) }
+                .filter { it.length in 20..240 }
+
+            candidates.forEach { line ->
+                val lower = line.lowercase(Locale.ROOT)
+                if (keywords.any { lower.contains(it) }) {
+                    val matcher = namePattern.matcher(line)
+                    val name = if (matcher.find()) matcher.group(1) else line.split(",", "—", "-", "–").firstOrNull().orEmpty()
+                    val rest = line.removePrefix(name).trim().trim(',', '—', '-', '–')
+                    if (name.length in 5..120) {
+                        managementList.add(ManagementPerson(name = name, position = "", bio = rest))
+                    }
+                }
+            }
+
+            managementList.distinctBy { normalizeSpaces(it.name).lowercase(Locale.ROOT) }
         } catch (e: Exception) {
             Timber.e(e, "Failed to scrape management")
             emptyList()
@@ -918,23 +1307,22 @@ class WebScraper @Inject constructor() {
      */
     suspend fun scrapeFaculties(): List<AboutFaculty> {
         return try {
-            val doc = Jsoup.connect("https://kubmi.ru/faculties/")
-                .timeout(15000)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .get()
-
+            val doc = fetchInstituteHistoryDoc()
             val facultyList = mutableListOf<AboutFaculty>()
-            
-            // Look for faculty cards or sections
-            doc.select(".faculty-item, .faculty, .faculty-card").forEach { element ->
-                val name = element.selectFirst(".name, h3, h4")?.text()?.trim() ?: ""
-                val description = element.selectFirst(".description, p")?.text()?.trim() ?: ""
-                
-                if (name.isNotEmpty()) {
-                    facultyList.add(AboutFaculty(name, description, emptyList()))
-                }
+
+            // The history page includes navigation lists: "Факультеты" and "Кафедры" in menus.
+            // Try to extract faculty-like items from the first menu block.
+            val menu = doc.selectFirst("nav, .menu, .navbar, header") ?: doc
+            val facultyNames = menu.select("a")
+                .map { normalizeSpaces(it.text()) }
+                .filter { it.isNotBlank() }
+                .filter { it.lowercase(Locale.ROOT) in listOf("лечебное дело", "педиатрия", "стоматология") }
+                .distinct()
+
+            facultyNames.forEach { name ->
+                facultyList.add(AboutFaculty(name = name, description = "", departments = emptyList()))
             }
-            
+
             facultyList
         } catch (e: Exception) {
             Timber.e(e, "Failed to scrape faculties")
@@ -947,21 +1335,22 @@ class WebScraper @Inject constructor() {
      */
     suspend fun scrapeContacts(): ContactInfo {
         return try {
-            val doc = Jsoup.connect("https://kubmi.ru/contacts/")
-                .timeout(15000)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .get()
+            val doc = fetchInstituteHistoryDoc()
 
-            val addressElement = doc.selectFirst(".address, #address")
-            val phoneElement = doc.selectFirst(".phone, #phone")
-            val emailElement = doc.selectFirst(".email, #email")
-            val websiteElement = doc.selectFirst(".website, #website")
-                
+            val text = normalizeSpaces(doc.text())
+            val email = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}").find(text)?.value ?: ""
+            val phone = Regex("\\+7\\s*\\(\\d{3}\\)\\s*\\d{3}-\\d{2}-\\d{2}").find(text)?.value ?: ""
+            val address = Regex("\\d{6}\\s*г\\.?\\s*Краснодар[^,]{0,80},\\s*ул\\.?\\s*[^,]{0,60},\\s*\\d+[А-Яа-яA-Za-z0-9/-]*")
+                .find(text)?.value
+                ?: Regex("г\\.?\\s*Краснодар[^,]{0,120},\\s*ул\\.?\\s*[^,]{0,60},\\s*\\d+[А-Яа-яA-Za-z0-9/-]*")
+                    .find(text)?.value
+                ?: ""
+
             ContactInfo(
-                address = addressElement?.text()?.trim() ?: "",
-                phone = phoneElement?.text()?.trim() ?: "",
-                email = emailElement?.text()?.trim() ?: "",
-                website = websiteElement?.text()?.trim() ?: "https://kubmi.ru/"
+                address = address,
+                phone = phone,
+                email = email,
+                website = "https://kubmi.ru/"
             )
         } catch (e: Exception) {
             Timber.e(e, "Failed to scrape contacts")
@@ -986,25 +1375,34 @@ class WebScraper @Inject constructor() {
      */
     suspend fun scrapeAchievements(): List<Achievement> {
         return try {
-            val doc = Jsoup.connect("https://kubmi.ru/achievements/")
-                .timeout(15000)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .get()
-
             val achievementList = mutableListOf<Achievement>()
-            
-            // Look for achievement cards or sections
-            doc.select(".achievement-item, .achievement, .achievement-card").forEach { element ->
-                val title = element.selectFirst(".title, h3, h4")?.text()?.trim() ?: ""
-                val description = element.selectFirst(".description, p")?.text()?.trim() ?: ""
-                val yearElement = element.selectFirst(".year, .date")
-                val year = yearElement?.text()?.toIntOrNull() ?: 0
-                
-                if (title.isNotEmpty()) {
-                    achievementList.add(Achievement(title, description, year))
+            val doc = fetchInstituteHistoryDoc()
+            val contentRoot = doc.selectFirst("article .entry-content, main .entry-content, .entry-content") ?: doc
+            val contentText = normalizeSpaces(contentRoot.text())
+
+            // Extract a few key numbers if present (the page often lists them in a single paragraph).
+            val patterns = listOf(
+                "кафедр" to Regex("(\\d+)\\s+кафедр"),
+                "преподавателей" to Regex("(\\d+)\\s+преподавател"),
+                "патентов" to Regex("(\\d+)\\s+патент"),
+                "монографий" to Regex("(\\d+)\\s+монограф"),
+                "кандидатских диссертаций" to Regex("(\\d+)\\s+кандидатск"),
+                "докторских диссертаций" to Regex("(\\d+)\\s+докторск")
+            )
+
+            patterns.forEach { (label, re) ->
+                val v = re.find(contentText)?.groupValues?.getOrNull(1)?.toIntOrNull()
+                if (v != null) {
+                    achievementList.add(
+                        Achievement(
+                            title = label.replaceFirstChar { it.uppercase() },
+                            description = v.toString(),
+                            year = 0
+                        )
+                    )
                 }
             }
-            
+
             achievementList
         } catch (e: Exception) {
             Timber.e(e, "Failed to scrape achievements")

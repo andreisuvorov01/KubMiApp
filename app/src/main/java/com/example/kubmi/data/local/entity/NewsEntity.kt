@@ -11,5 +11,7 @@ data class NewsEntity(
     val content: String,
     val date: String,
     val imageUrl: String?,
+    val fullText: String? = null,
+    val contentBlocksJson: String? = null,
     val timestamp: Long = System.currentTimeMillis()
 )

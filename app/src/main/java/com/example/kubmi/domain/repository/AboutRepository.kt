@@ -1,10 +1,9 @@
 package com.example.kubmi.domain.repository
 
-import com.example.kubmi.domain.model.AboutContent
+import com.example.kubmi.domain.model.AboutPageContent
 import kotlinx.coroutines.flow.Flow
 
 interface AboutRepository {
-    fun getAboutContent(): Flow<AboutContent?>
-    suspend fun refreshAboutContent(): AboutContent
-    suspend fun clearCache()
+    fun getAboutContent(): Flow<AboutPageContent>
+    suspend fun refreshAboutContent(): AboutPageContent
 }

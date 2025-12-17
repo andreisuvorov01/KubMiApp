@@ -24,7 +24,11 @@ object DatabaseModule {
             context,
             KubMiDatabase::class.java,
             "kubmi_database"
-        ).addMigrations(KubMiDatabase.MIGRATION_1_2, KubMiDatabase.MIGRATION_2_3)
+        ).addMigrations(
+            KubMiDatabase.MIGRATION_1_2,
+            KubMiDatabase.MIGRATION_2_3,
+            KubMiDatabase.MIGRATION_3_4
+        )
             .build()
     }
 

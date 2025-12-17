@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -134,7 +135,8 @@ fun ScheduleDetailScreen(
                         }
                     }
                 } else {
-                    weeklyScheduleData.forEachIndexed { weeklyScheduleIndex, weeklySchedule ->
+                    // Reverse order to show nearest weeks first (from current to past)
+                    weeklyScheduleData.reversed().forEachIndexed { weeklyScheduleIndex, weeklySchedule ->
                         if (weeklySchedule.weekTitle != null) {
                             item {
                                 Text(
@@ -173,7 +175,7 @@ fun ScheduleDetailScreen(
                                                 isHeader = row.isHeader,
                                                 modifier = Modifier
                                                     .width(baseCellWidth * cell.colSpan)
-                                                    .heightIn(min = 40.dp)
+                                                    .height(64.dp)
                                             )
                                         }
                                     }
@@ -210,7 +212,9 @@ fun RowScope.TableCell(cellContent: ScheduleCellContent, isHeader: Boolean, modi
                 text = cellContent.text.ifBlank { "-" }, // Display "-" for empty fields
                 style = textStyle,
                 fontWeight = fontWeight,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                maxLines = if (isHeader) 2 else 4,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }

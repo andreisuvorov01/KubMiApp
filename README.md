@@ -83,6 +83,12 @@ The application uses Hilt for dependency injection. The architecture has been up
 2. Open in Android Studio
 3. Build and run on your device or emulator
 
+## Android TV kiosk / launcher notes
+
+- The app exposes HOME + LEANBACK launch intents to act as a launcher on Android TV.
+- A foreground watchdog service returns the app to front if a user exits.
+- See `adb-kiosk-commands.md` for optional ADB commands to disable the stock launcher or force-select this app as HOME when possible.
+
 ## Testing
 
 The application includes unit tests for the scraping functionality and UI tests for the main screens.

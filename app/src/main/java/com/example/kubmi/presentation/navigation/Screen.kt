@@ -15,8 +15,13 @@ sealed class Screen(val route: String) {
     }
     object News : Screen("news")
     object NewsDetail : Screen("news_detail/{newsId}") {
-        fun createRoute(newsId: String) = "news_detail/$newsId"
+        fun createRoute(newsId: String): String {
+            // newsId is a URL (contains '/'), so it must be encoded for navigation route segments.
+            val safeId = Uri.encode(newsId)
+            return "news_detail/$safeId"
+        }
     }
     object About : Screen("about")
     object Admin : Screen("admin")
+    object KioskSettings : Screen("kiosk_settings")
 }

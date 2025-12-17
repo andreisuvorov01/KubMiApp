@@ -12,6 +12,15 @@ android {
         version = release(36)
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("kubmi-release.jks")
+            storePassword = "kubmi2024"
+            keyAlias = "kubmi"
+            keyPassword = "kubmi2024"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.example.kubmi"
         minSdk = 23
@@ -24,6 +33,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

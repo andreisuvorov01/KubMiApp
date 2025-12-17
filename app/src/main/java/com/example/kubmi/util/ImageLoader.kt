@@ -1,19 +1,17 @@
 package com.example.kubmi.util
 
 import android.content.Context
-import android.os.Build
-import androidx.annotation.RequiresApi
 import coil.ImageLoader
 import coil.decode.SvgDecoder
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
-import coil.util.DebugLogger
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.Dispatchers
 import javax.inject.Singleton
 
 /**
@@ -41,7 +39,11 @@ object ImageLoaderModule {
     @Provides
     @Singleton
     fun provideImageLoader(@ApplicationContext context: Context): ImageLoader {
+        val limited = Dispatchers.IO.limitedParallelism(3)
         return ImageLoader.Builder(context)
+            .dispatcher(limited)
+            .fetcherDispatcher(limited)
+            .decoderDispatcher(limited)
             .memoryCache {
                 MemoryCache.Builder(context)
                     .maxSizePercent(0.25) // Use 25% of available memory
@@ -50,7 +52,7 @@ object ImageLoaderModule {
             .diskCache {
                 DiskCache.Builder()
                     .directory(context.cacheDir.resolve("image_cache"))
-                    .maxSizeBytes(50 * 1024 * 1024) // 50MB disk cache
+                    .maxSizeBytes(100L * 1024L * 1024L) // 100MB disk cache
                     .build()
             }
             .crossfade(true) // Enable crossfade animation
@@ -62,7 +64,6 @@ object ImageLoaderModule {
             .components {
                 add(SvgDecoder.Factory())
             }
-            .logger(DebugLogger())
             .build()
     }
 }

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.example.kubmi.MainActivity
+import com.example.kubmi.service.KioskService
 
 class BootReceiver : BroadcastReceiver() {
     companion object {
@@ -21,6 +22,7 @@ class BootReceiver : BroadcastReceiver() {
             Intent.ACTION_MY_PACKAGE_REPLACED,
             "android.intent.action.QUICKBOOT_POWERON",
             "com.htc.intent.action.QUICKBOOT_POWERON" -> {
+                KioskService.start(context)
                 startMainActivity(context)
             }
         }

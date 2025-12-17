@@ -1,0 +1,10 @@
+zyload_iframes wpr_preconnect_external_domains wpr_oci wpr_minify_css wpr_preload_links wpr_host_fonts_locally wpr_desktop" /></head>
+<body class="wp-singular post-template-default single single-post postid-1345 single-format-standard wp-custom-logo wp-embed-responsive wp-theme-hello-elementor hello-elementor-default elementor-default elementor-kit-935 elementor-page-1357">
+
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+    (function(m,e,t,r,i,k,a){
+        m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+        m[i].l=1*new Date();
+        for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+        k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=

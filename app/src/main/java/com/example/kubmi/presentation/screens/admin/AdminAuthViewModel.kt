@@ -16,7 +16,7 @@ class AdminAuthViewModel @Inject constructor(
     private val securePreferences: SecurePreferences
 ) : ViewModel() {
     
-    private val _authState = MutableStateFlow<AuthState>(AuthState.Initial)
+    private val _authState = MutableStateFlow<AuthState>(AuthState.Loading)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
     
     init {
@@ -25,32 +25,33 @@ class AdminAuthViewModel @Inject constructor(
     
     private fun checkPasswordStatus() {
         viewModelScope.launch {
-            _authState.value = AuthState.Loading
-            try {
-                val isPasswordSet = securePreferences.isPasswordSet()
-                _authState.value = if (isPasswordSet) {
-                    AuthState.PasswordSet
-                } else {
-                    AuthState.Initial
-                }
-            } catch (e: Exception) {
-                _authState.value = AuthState.Error("Failed to check password status: ${e.message}")
-            }
+            // Password is always set (default: kubmiadmin), so always require auth
+            _authState.value = AuthState.RequiresAuth()
         }
     }
     
+    /**
+     * Set password for the first time and immediately authenticate
+     */
     fun setPassword(password: String) {
+        if (password.isBlank()) {
+            return
+        }
         viewModelScope.launch {
             _authState.value = AuthState.Loading
             try {
                 securePreferences.savePassword(password)
-                _authState.value = AuthState.PasswordSet
+                // After setting password, user is immediately authenticated
+                _authState.value = AuthState.Authenticated
             } catch (e: Exception) {
-                _authState.value = AuthState.Error("Failed to set password: ${e.message}")
+                _authState.value = AuthState.Initial
             }
         }
     }
     
+    /**
+     * Authenticate with existing password
+     */
     fun authenticate(password: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
@@ -59,22 +60,33 @@ class AdminAuthViewModel @Inject constructor(
                 _authState.value = if (isAuthenticated) {
                     AuthState.Authenticated
                 } else {
-                    AuthState.Error("Invalid password")
+                    // Stay on login screen with error message
+                    AuthState.RequiresAuth(errorMessage = "Неверный пароль")
                 }
             } catch (e: Exception) {
-                _authState.value = AuthState.Error("Authentication failed: ${e.message}")
+                _authState.value = AuthState.RequiresAuth(errorMessage = "Ошибка проверки пароля")
             }
         }
     }
     
+    /**
+     * Reset password and go back to initial setup
+     */
     fun resetPassword() {
         viewModelScope.launch {
             try {
                 securePreferences.clearPassword()
                 _authState.value = AuthState.Initial
             } catch (e: Exception) {
-                _authState.value = AuthState.Error("Failed to reset password: ${e.message}")
+                // Ignore errors during reset
             }
         }
+    }
+    
+    /**
+     * Logout - go back to requiring authentication
+     */
+    fun logout() {
+        _authState.value = AuthState.RequiresAuth()
     }
 }

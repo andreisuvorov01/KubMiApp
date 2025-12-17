@@ -43,10 +43,19 @@ class ScheduleViewModel @Inject constructor(
 
     fun loadAllGroups() {
         Log.i("KubMI_Schedule", "loadAllGroups() called")
+        // #region agent log
+        Log.d("KubMI_Debug", "[E] loadAllGroups: Function called")
+        // #endregion
         viewModelScope.launch {
             Log.i("KubMI_Schedule", "loadAllGroups() coroutine started")
+            // #region agent log
+            Log.d("KubMI_Debug", "[E] loadAllGroups: Coroutine started, calling repository")
+            // #endregion
             try {
                 val table = scheduleRepository.getStudentGroupsTable()
+                // #region agent log
+                Log.d("KubMI_Debug", "[E] loadAllGroups: Repository returned - headers=${table.headers.size}, rows=${table.rows.size}")
+                // #endregion
                 Log.i("KubMI_Schedule", "getStudentGroupsTable returned: headers=${table.headers.size}, rows=${table.rows.size}")
                 if (table.headers.isEmpty() || table.rows.isEmpty()) {
                     Log.w("KubMI_Schedule", "Student groups table is empty; falling back to mock 1x6 row")
@@ -65,10 +74,19 @@ class ScheduleViewModel @Inject constructor(
 
     fun loadAllTeachers() {
         Log.i("KubMI_Schedule", "loadAllTeachers() called")
+        // #region agent log
+        Log.d("KubMI_Debug", "[E] loadAllTeachers: Function called")
+        // #endregion
         viewModelScope.launch {
             Log.i("KubMI_Schedule", "loadAllTeachers() coroutine started")
+            // #region agent log
+            Log.d("KubMI_Debug", "[E] loadAllTeachers: Coroutine started, calling repository")
+            // #endregion
             try {
                 val teachers = scheduleRepository.getAllTeachers()
+                // #region agent log
+                Log.d("KubMI_Debug", "[E] loadAllTeachers: Repository returned ${teachers.size} teachers")
+                // #endregion
                 Log.i("KubMI_Schedule", "getAllTeachers returned: ${teachers.size} entries")
                 if (teachers.isEmpty()) {
                     Log.w("KubMI_Schedule", "Teachers list is empty; falling back to mock")

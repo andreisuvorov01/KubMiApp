@@ -60,19 +60,31 @@ class ScheduleRepositoryImpl @Inject constructor(
 
     override suspend fun getStudentGroupsTable(): StudentGroupsTable = withContext(Dispatchers.IO) {
         Log.i("KubMI_Repo", "getStudentGroupsTable() called")
+        // #region agent log
+        Log.d("KubMI_Debug", "[A] getStudentGroupsTable: Starting network request")
+        // #endregion
         try {
             Log.i("KubMI_Repo", "Connecting to kubmi.ru/raspisanie-zanyatij-studentov-panel/")
             val doc = org.jsoup.Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-studentov-panel/")
                 .timeout(15000)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 .get()
+            // #region agent log
+            Log.d("KubMI_Debug", "[A] getStudentGroupsTable: Page fetched successfully, HTML length=${doc.html().length}")
+            // #endregion
             Log.i("KubMI_Repo", "Page fetched, parsing table...")
 
             val table = webScraper.parseStudentGroupsTableFromPage(doc)
             val nonEmpty = table.rows.sumOf { r -> r.count { it != null } }
+            // #region agent log
+            Log.d("KubMI_Debug", "[C] getStudentGroupsTable: Parsed table - headers=${table.headers.size}, rows=${table.rows.size}, nonEmpty=$nonEmpty")
+            // #endregion
             Log.i("KubMI_Repo", "getStudentGroupsTable(): headers=${table.headers.size}, rows=${table.rows.size}, nonEmptyCells=$nonEmpty")
             table
         } catch (e: Exception) {
+            // #region agent log
+            Log.e("KubMI_Debug", "[D] getStudentGroupsTable: EXCEPTION - ${e.javaClass.simpleName}: ${e.message}")
+            // #endregion
             Log.e("KubMI_Repo", "Error parsing student groups table from web: ${e.message}", e)
             StudentGroupsTable(headers = emptyList(), rows = emptyList())
         }
@@ -102,18 +114,30 @@ class ScheduleRepositoryImpl @Inject constructor(
      */
     override suspend fun getAllTeachers(): List<ScheduleIndexEntry> = withContext(Dispatchers.IO) {
         Log.i("KubMI_Repo", "getAllTeachers() called")
+        // #region agent log
+        Log.d("KubMI_Debug", "[A] getAllTeachers: Starting network request")
+        // #endregion
         try {
             Log.i("KubMI_Repo", "Connecting to kubmi.ru/raspisanie-zanyatij-prepodavatelej-panel/")
             val doc = org.jsoup.Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-prepodavatelej-panel/")
                 .timeout(15000)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 .get()
+            // #region agent log
+            Log.d("KubMI_Debug", "[A] getAllTeachers: Page fetched successfully, HTML length=${doc.html().length}")
+            // #endregion
             Log.i("KubMI_Repo", "Teacher page fetched, parsing...")
             
             val teachers = webScraper.parseTeacherEntriesFromPage(doc)
+            // #region agent log
+            Log.d("KubMI_Debug", "[C] getAllTeachers: Parsed ${teachers.size} teacher entries")
+            // #endregion
             Log.i("KubMI_Repo", "getAllTeachers(): ${teachers.size} entries parsed")
             teachers
         } catch (e: Exception) {
+            // #region agent log
+            Log.e("KubMI_Debug", "[D] getAllTeachers: EXCEPTION - ${e.javaClass.simpleName}: ${e.message}")
+            // #endregion
             Log.e("KubMI_Repo", "Error parsing teachers from web: ${e.message}", e)
             emptyList()
         }

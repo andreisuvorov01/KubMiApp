@@ -1,7 +1,5 @@
 package com.example.kubmi.presentation.screens.main
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.graphics.Brush
@@ -10,10 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,11 +39,6 @@ fun MainScreen(navController: NavController) {
     val viewModel: MainViewModel = hiltViewModel()
     val news by viewModel.news.collectAsState()
     val refreshState by viewModel.refreshState.collectAsState()
-    val context = LocalContext.current
-    val phoneValue = stringResource(R.string.panel_phone_value)
-    val phoneTel = stringResource(R.string.panel_phone_tel)
-    val addressValue = stringResource(R.string.panel_address_value)
-    val emailValue = stringResource(R.string.email_value)
 
     // Trigger initial load so the main screen isn't stuck showing "loading" forever on a fresh install.
     LaunchedEffect(Unit) {
@@ -167,26 +157,14 @@ fun MainScreen(navController: NavController) {
             }
 
             item {
-                PanelSectionTitle(text = stringResource(R.string.need_help))
+                PanelSectionTitle(text = stringResource(R.string.about_university))
             }
 
             item {
-                HelpCard(
-                    phone = phoneValue,
-                    address = addressValue,
-                    email = emailValue,
-                    onCallClick = {
-                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phoneTel"))
-                        context.startActivity(intent)
-                    },
-                    onEmailClick = {
-                        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:$emailValue"))
-                        context.startActivity(intent)
-                    },
-                    onSiteClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://kubmi.ru/"))
-                        context.startActivity(intent)
-                }
+                ScheduleCtaTile(
+                    title = stringResource(R.string.about_university),
+                    gradient = Brush.horizontalGradient(listOf(KubMiCtaBlueDark, KubMiAccentRedDark)),
+                    onClick = { navController.navigate(Screen.About.route) }
                 )
             }
         }
@@ -290,71 +268,10 @@ private fun ScheduleCtaTile(
                 overflow = TextOverflow.Ellipsis
             )
             Icon(
-                imageVector = Icons.Default.ArrowForward,
+                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = null,
                 tint = Color.White
             )
-        }
-    }
-}
-
-@Composable
-private fun HelpCard(
-    phone: String,
-    address: String,
-    email: String,
-    onCallClick: () -> Unit,
-    onEmailClick: () -> Unit,
-    onSiteClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = address,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Text(
-                text = phone,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Text(
-                text = email,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                FilledTonalButton(onClick = onCallClick) {
-                    Icon(imageVector = Icons.Default.Call, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = stringResource(R.string.call))
-                }
-
-                FilledTonalButton(onClick = onEmailClick) {
-                    Icon(imageVector = Icons.Default.Email, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = stringResource(R.string.write_email))
-                }
-            }
-
-            OutlinedButton(onClick = onSiteClick) {
-                Icon(imageVector = Icons.Default.OpenInBrowser, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = stringResource(R.string.open_site))
-            }
         }
     }
 }

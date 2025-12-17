@@ -10,7 +10,13 @@ interface NewsDao {
     fun getAllNews(): Flow<List<NewsEntity>>
 
     @Query("SELECT * FROM news WHERE id = :id")
+    fun observeNewsById(id: String): Flow<NewsEntity?>
+
+    @Query("SELECT * FROM news WHERE id = :id")
     suspend fun getNewsById(id: String): NewsEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(news: NewsEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(news: List<NewsEntity>)
