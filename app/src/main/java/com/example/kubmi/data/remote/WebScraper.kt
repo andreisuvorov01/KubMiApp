@@ -37,9 +37,9 @@ class WebScraper @Inject constructor() {
 
     // Кэшируем часто используемые селекторы
     // News grid on the panel page is rendered by Essential Addons (EAEL):
-    // <div class="eael-post-block-grid eael-post-appender eael-post-appender-02a6e68"> ... <article> ... </article>
+    // <div class="eael-post-block-grid eael-post-appender eael-post-appender-53969f8"> ... <article> ... </article>
     private val newsSelector =
-        "div.eael-post-block-grid.eael-post-appender.eael-post-appender-02a6e68, #elementor-element-7d507b9, .news-container"
+        "div.eael-post-block-grid.eael-post-appender.eael-post-appender-53969f8, #elementor-element-7d507b9, .news-container"
     private val newsItemSelector = "article.eael-post-block-item, article, .news-item, .post"
     private val titleSelector = "h2 a, h3 a, .eael-entry-title a, h2, h3, .title"
     private val descSelector = ".eael-entry-content p, .eael-post-excerpt, .excerpt, p"
@@ -303,7 +303,7 @@ class WebScraper @Inject constructor() {
                 .get()
 
             // Prefer EAEL news grid (this is the block the user requested)
-            val eaelSelector = "div.eael-post-block-grid.eael-post-appender.eael-post-appender-02a6e68 article"
+            val eaelSelector = "div.eael-post-block-grid.eael-post-appender.eael-post-appender-53969f8 article"
             val eaelArticles = doc.select(eaelSelector)
 
             val newsElements = if (eaelArticles.isNotEmpty()) {
@@ -689,6 +689,47 @@ class WebScraper @Inject constructor() {
 
         val url = titleLink?.absUrl("href").orEmpty()
 
+        fun previewImage(img: Element): String? {
+            fun resolve(raw: String): String? {
+                val r = raw.trim()
+                if (r.isBlank()) return null
+                if (r.startsWith("http://") || r.startsWith("https://")) return r
+                if (r.startsWith("//")) return "https:$r"
+                val base = img.ownerDocument()?.baseUri().orEmpty()
+                return try {
+                    URI(base).resolve(r).toString()
+                } catch (_: Exception) {
+                    null
+                }
+            }
+
+            // Prefer lazy attributes; ignore placeholders.
+            val candidates = listOf(
+                img.absUrl("data-lazy-src").ifBlank { img.attr("data-lazy-src") },
+                img.absUrl("data-src").ifBlank { img.attr("data-src") },
+                img.absUrl("data-original").ifBlank { img.attr("data-original") },
+                img.absUrl("src").ifBlank { img.attr("src") }
+            )
+            val fromAttrs = candidates
+                .mapNotNull { resolve(it) }
+                .firstOrNull { it.isNotBlank() && !it.startsWith("data:image", ignoreCase = true) }
+            if (!fromAttrs.isNullOrBlank()) return fromAttrs
+
+            // srcset fallbacks (take first candidate)
+            fun pickFromSrcSet(raw: String): String? {
+                if (raw.isBlank()) return null
+                return raw.split(",")
+                    .mapNotNull { part ->
+                        val url = part.trim().split("\\s+".toRegex()).firstOrNull().orEmpty()
+                        resolve(url)
+                    }
+                    .firstOrNull { it.isNotBlank() && !it.startsWith("data:image", ignoreCase = true) }
+            }
+            return pickFromSrcSet(img.attr("data-lazy-srcset"))
+                ?: pickFromSrcSet(img.attr("data-srcset"))
+                ?: pickFromSrcSet(img.attr("srcset"))
+        }
+
         // Panel page structure: first <p> contains title link, second <p> contains excerpt, then <time>
         val paragraphs = element.select("p")
         val description = paragraphs.getOrNull(1)?.text()?.trim()
@@ -699,7 +740,7 @@ class WebScraper @Inject constructor() {
             ?: element.selectFirst(dateSelector)?.text()?.trim()
             ?: LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
 
-        val imageUrl = element.selectFirst(imgSelector)?.absUrl("src")?.ifBlank { null }
+        val imageUrl = element.selectFirst(imgSelector)?.let { img -> previewImage(img) }
 
         // Use stable ID based on URL when available (prevents empty detail screen after refresh)
         val id = if (url.isNotBlank()) url else UUID.randomUUID().toString()

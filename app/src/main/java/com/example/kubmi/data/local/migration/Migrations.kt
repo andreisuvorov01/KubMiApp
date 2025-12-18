@@ -40,4 +40,18 @@ object Migrations {
             database.execSQL("ALTER TABLE `news` ADD COLUMN `contentBlocksJson` TEXT")
         }
     }
+
+    // No-op migration to keep compatibility if existing devices had DB v5
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // Schema unchanged between 4 and 5
+        }
+    }
+
+    // No-op migration for identity hash refresh if bumping to v6
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // Schema unchanged between 5 and 6
+        }
+    }
 }

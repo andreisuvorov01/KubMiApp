@@ -6,6 +6,7 @@ import android.content.Intent
 import android.util.Log
 import com.example.kubmi.MainActivity
 import com.example.kubmi.service.KioskService
+import com.example.kubmi.util.WorkScheduler
 
 class BootReceiver : BroadcastReceiver() {
     companion object {
@@ -24,6 +25,7 @@ class BootReceiver : BroadcastReceiver() {
             "com.htc.intent.action.QUICKBOOT_POWERON" -> {
                 KioskService.start(context)
                 startMainActivity(context)
+                WorkScheduler.scheduleDailySync(context)
             }
         }
     }

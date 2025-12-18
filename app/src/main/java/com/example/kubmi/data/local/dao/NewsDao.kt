@@ -21,6 +21,9 @@ interface NewsDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(news: List<NewsEntity>)
 
+    @Query("DELETE FROM news WHERE id NOT IN (:ids)")
+    suspend fun deleteNotInIds(ids: List<String>)
+
     @Query("DELETE FROM news")
     suspend fun deleteAll()
 }

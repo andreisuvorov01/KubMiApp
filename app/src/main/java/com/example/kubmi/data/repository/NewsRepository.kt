@@ -3,6 +3,7 @@ package com.example.kubmi.data.repository
 import com.example.kubmi.data.local.dao.NewsDao
 import com.example.kubmi.data.local.entity.NewsEntity
 import com.example.kubmi.data.remote.WebScraper
+import com.example.kubmi.util.ParserCache
 import com.example.kubmi.domain.model.News
 import com.example.kubmi.domain.model.NewsContentBlock
 import com.google.gson.Gson
@@ -11,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.firstOrNull
 import timber.log.Timber
 import javax.inject.Inject
 
@@ -18,7 +20,8 @@ import com.example.kubmi.domain.repository.NewsRepository as DomainNewsRepositor
 
 class NewsRepositoryImpl @Inject constructor(
     private val newsDao: NewsDao,
-    private val webScraper: WebScraper
+    private val webScraper: WebScraper,
+    private val parserCache: ParserCache
 ) : DomainNewsRepository {
     private val gson = Gson()
 
@@ -31,16 +34,36 @@ class NewsRepositoryImpl @Inject constructor(
 
     override suspend fun getNewsById(id: String): News? = newsDao.getNewsById(id)?.toDomain()
 
-    override suspend fun refreshNews() {
+    override suspend fun refreshNews(forceNetwork: Boolean) {
         try {
             withContext(Dispatchers.IO) {
+                if (!forceNetwork) {
+                    val cachedNews = parserCache.readNews()
+                    val hasDbData = newsDao.getAllNews().firstOrNull().orEmpty().isNotEmpty()
+                    if (cachedNews != null && !hasDbData) {
+                        newsDao.insertAll(cachedNews.map { it.toEntity() })
+                        Timber.i("refreshNews(): restored ${cachedNews.size} items from cache, skipping network")
+                        return@withContext
+                    }
+                }
+
                 val news = webScraper.scrapeNews()
                 if (news.isEmpty()) {
                     // Important: do NOT wipe previously cached news if scraping failed / returned nothing.
                     Timber.w("refreshNews(): scraped 0 items; keeping existing cached news")
                     return@withContext
                 }
+
+                parserCache.writeNews(news)
                 
+                // Drop entries that are not present in the freshly scraped list (diff-based cleanup).
+                val freshIds = news.map { it.id }.filter { it.isNotBlank() }.distinct()
+                if (freshIds.isEmpty()) {
+                    newsDao.deleteAll()
+                } else {
+                    newsDao.deleteNotInIds(freshIds)
+                }
+
                 // Merge preview news with cached details (fullText/contentBlocksJson) so that
                 // opening an already-read article keeps its full content after refresh.
                 val now = System.currentTimeMillis()

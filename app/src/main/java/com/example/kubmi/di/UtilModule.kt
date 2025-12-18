@@ -3,12 +3,14 @@ package com.example.kubmi.di
 import android.content.Context
 import com.example.kubmi.util.AdminLogger
 import com.example.kubmi.util.CacheManager
+import com.example.kubmi.util.ParserCache
 import com.example.kubmi.util.SecurePreferences
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import com.google.gson.Gson
 import javax.inject.Singleton
 
 @Module
@@ -32,4 +34,15 @@ object UtilModule {
     fun provideAdminLogger(@ApplicationContext context: Context): AdminLogger {
         return AdminLogger(context)
     }
+
+    @Provides
+    @Singleton
+    fun provideGson(): Gson = Gson()
+
+    @Provides
+    @Singleton
+    fun provideParserCache(
+        @ApplicationContext context: Context,
+        gson: Gson
+    ): ParserCache = ParserCache(context, gson)
 }

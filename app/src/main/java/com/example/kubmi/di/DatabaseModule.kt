@@ -27,8 +27,11 @@ object DatabaseModule {
         ).addMigrations(
             KubMiDatabase.MIGRATION_1_2,
             KubMiDatabase.MIGRATION_2_3,
-            KubMiDatabase.MIGRATION_3_4
+            KubMiDatabase.MIGRATION_3_4,
+            KubMiDatabase.MIGRATION_4_5,
+            KubMiDatabase.MIGRATION_5_6
         )
+            .fallbackToDestructiveMigrationOnDowngrade()
             .build()
     }
 

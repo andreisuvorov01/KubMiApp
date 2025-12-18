@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
+import java.io.File
+import org.json.JSONObject
 
 /**
  * ViewModel for the main screen.
@@ -25,6 +27,33 @@ import javax.inject.Inject
 class MainViewModel @Inject constructor(
     private val newsRepository: NewsRepository
 ) : ViewModel() {
+
+    // #region agent log
+    private fun agentLog(
+        hypothesisId: String,
+        location: String,
+        message: String,
+        data: Map<String, Any?> = emptyMap(),
+        runId: String = "run1"
+    ) {
+        try {
+            val payload = mapOf(
+                "sessionId" to "debug-session",
+                "runId" to runId,
+                "hypothesisId" to hypothesisId,
+                "location" to location,
+                "message" to message,
+                "data" to data,
+                "timestamp" to System.currentTimeMillis()
+            )
+            File("d:\\AndroidProject\\.cursor\\debug.log").appendText(
+                JSONObject(payload).toString() + "\n"
+            )
+        } catch (_: Exception) {
+            // keep ViewModel safe
+        }
+    }
+    // #endregion
 
     /**
      * UI state for news list.
@@ -49,13 +78,31 @@ class MainViewModel @Inject constructor(
         if (_refreshState.value is RefreshState.Loading) return // Избегаем дублирующих запросов
         
         viewModelScope.launch {
+            agentLog(
+                hypothesisId = "H1",
+                location = "MainViewModel:refreshNews",
+                message = "Refresh start",
+                data = mapOf("currentState" to _refreshState.value::class.java.simpleName)
+            )
             _refreshState.value = RefreshState.Loading
             try {
                 newsRepository.refreshNews()
                 _refreshState.value = RefreshState.Success
+                agentLog(
+                    hypothesisId = "H1",
+                    location = "MainViewModel:refreshNews",
+                    message = "Refresh success",
+                    data = mapOf("newsCount" to news.value.size)
+                )
             } catch (e: Exception) {
                 _refreshState.value = RefreshState.Error(e.message ?: "Неизвестная ошибка")
                 Timber.e(e, "Error refreshing news")
+                agentLog(
+                    hypothesisId = "H1",
+                    location = "MainViewModel:refreshNews",
+                    message = "Refresh error",
+                    data = mapOf("error" to (e.message ?: e::class.java.simpleName))
+                )
             }
         }
     }

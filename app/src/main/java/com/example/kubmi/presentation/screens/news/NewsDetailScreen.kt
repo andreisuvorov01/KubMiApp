@@ -2,37 +2,31 @@ package com.example.kubmi.presentation.screens.news
 
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.clip
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.kubmi.R
 import com.example.kubmi.domain.model.NewsContentBlock
 import com.example.kubmi.ui.components.CoilImage
-import coil.compose.AsyncImagePainter
-import coil.compose.rememberAsyncImagePainter
-import coil.request.ImageRequest
-import android.util.Log
-import kotlinx.coroutines.delay
-import coil.size.Precision
-import coil.size.Scale
-import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,64 +52,6 @@ fun NewsDetailScreen(
             "KubMI_NewsUI",
             "NewsDetailScreen: state newsId=$newsId loading=$isLoadingDetail error=${detailError != null} blocks=${newsItem?.contentBlocks?.size ?: -1} fullTextLen=${newsItem?.fullText?.length ?: -1}"
         )
-    }
-
-    @Composable
-    fun ArticleImage(
-        url: String,
-        contentDescription: String?,
-        modifier: Modifier,
-        contentScale: ContentScale
-    ) {
-        // Guard against "infinite" loading spinners: show progress only briefly.
-        var showSpinner by remember(url) { mutableStateOf(true) }
-        LaunchedEffect(url) {
-            showSpinner = true
-            delay(2500)
-            showSpinner = false
-        }
-
-        val config = LocalConfiguration.current
-        val density = LocalDensity.current
-        val targetWidthPx = remember(config, density) {
-            // Limit decode width to screen width (capped) to avoid decoding very large source images.
-            val screenWidthPx = with(density) { config.screenWidthDp.dp.toPx() }.roundToInt()
-            screenWidthPx.coerceIn(480, 1080)
-        }
-
-        val painter = rememberAsyncImagePainter(
-            model = ImageRequest.Builder(context)
-                .data(url)
-                .size(targetWidthPx)
-                .precision(Precision.INEXACT)
-                .scale(if (contentScale == ContentScale.Crop) Scale.FILL else Scale.FIT)
-                .crossfade(true)
-                .build()
-        )
-        when (painter.state) {
-            is AsyncImagePainter.State.Error -> {
-                // Don't show broken image placeholders for failed loads.
-                return
-            }
-            else -> Unit
-        }
-
-        Box(modifier = modifier) {
-            Image(
-                painter = painter,
-                contentDescription = contentDescription,
-                contentScale = contentScale,
-                modifier = Modifier.fillMaxSize()
-            )
-            if (showSpinner && painter.state is AsyncImagePainter.State.Loading) {
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(22.dp),
-                    strokeWidth = 2.dp
-                )
-            }
-        }
     }
 
     Scaffold(
@@ -165,8 +101,8 @@ fun NewsDetailScreen(
                 val coverUrl = news.imageUrl
                 if (!coverUrl.isNullOrBlank()) {
                     item {
-                        ArticleImage(
-                            url = coverUrl,
+                        CoilImage(
+                            imageUrl = coverUrl,
                             contentDescription = stringResource(R.string.news_image_description, news.title),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -221,8 +157,8 @@ fun NewsDetailScreen(
                             NewsContentBlock.TYPE_IMAGE -> {
                                 val url = block.imageUrl
                                 if (!url.isNullOrBlank()) {
-                                    ArticleImage(
-                                        url = url,
+                                    CoilImage(
+                                        imageUrl = url,
                                         contentDescription = block.alt ?: news.title,
                                         modifier = Modifier
                                             .fillMaxWidth()

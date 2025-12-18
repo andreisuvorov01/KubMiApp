@@ -24,7 +24,7 @@ object WorkManagerModule {
     @Provides
     @Singleton
     fun providePeriodicWorkRequest(): PeriodicWorkRequest {
-        return PeriodicWorkRequestBuilder<DataSyncWorker>(30, TimeUnit.MINUTES)
+        return PeriodicWorkRequestBuilder<DataSyncWorker>(12, TimeUnit.HOURS)
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)

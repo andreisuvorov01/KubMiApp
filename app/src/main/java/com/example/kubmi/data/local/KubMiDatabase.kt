@@ -12,7 +12,7 @@ import com.example.kubmi.data.local.migration.Migrations
 
 @Database(
     entities = [NewsEntity::class, ScheduleEntity::class, AboutEntity::class],
-    version = 4,
+    version = 6,
     exportSchema = false
 )
 abstract class KubMiDatabase : RoomDatabase() {
@@ -24,5 +24,7 @@ abstract class KubMiDatabase : RoomDatabase() {
         val MIGRATION_1_2 = Migrations.MIGRATION_1_2
         val MIGRATION_2_3 = Migrations.MIGRATION_2_3
         val MIGRATION_3_4 = Migrations.MIGRATION_3_4
+        val MIGRATION_4_5 = Migrations.MIGRATION_4_5
+        val MIGRATION_5_6 = Migrations.MIGRATION_5_6
     }
 }

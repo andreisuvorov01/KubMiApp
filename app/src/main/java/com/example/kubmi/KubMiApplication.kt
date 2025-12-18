@@ -3,11 +3,10 @@ package com.example.kubmi
 import android.app.Application
 import android.content.Context
 import androidx.hilt.work.HiltWorkerFactory
-import androidx.work.*
-import com.example.kubmi.data.worker.DataSyncWorker
+import androidx.work.Configuration
 import com.example.kubmi.util.SecurePreferences
+import com.example.kubmi.util.WorkScheduler
 import dagger.hilt.android.HiltAndroidApp
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import timber.log.Timber
 import coil.ImageLoader
@@ -18,6 +17,8 @@ import coil.memory.MemoryCache
 import coil.request.CachePolicy
 import coil.util.DebugLogger
 import kotlinx.coroutines.Dispatchers
+import java.io.File
+import org.json.JSONObject
 
 /**
  * Main Application class for KubMI.
@@ -53,6 +54,33 @@ class KubMiApplication : Application(), Configuration.Provider, ImageLoaderFacto
         setupWorkManager()
     }
 
+    // #region agent log
+    private fun agentLog(
+        hypothesisId: String,
+        location: String,
+        message: String,
+        data: Map<String, Any?> = emptyMap(),
+        runId: String = "run1"
+    ) {
+        try {
+            val payload = mapOf(
+                "sessionId" to "debug-session",
+                "runId" to runId,
+                "hypothesisId" to hypothesisId,
+                "location" to location,
+                "message" to message,
+                "data" to data,
+                "timestamp" to System.currentTimeMillis()
+            )
+            File("d:\\AndroidProject\\.cursor\\debug.log").appendText(
+                JSONObject(payload).toString() + "\n"
+            )
+        } catch (_: Exception) {
+            // logging must not crash app
+        }
+    }
+    // #endregion
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -61,30 +89,22 @@ class KubMiApplication : Application(), Configuration.Provider, ImageLoaderFacto
 
     /**
      * Sets up periodic data synchronization work.
-     * Runs every 30 minutes when device is connected to network.
+     * Now scheduled twice daily (00:00 and 12:00) with WorkManager fallback.
      */
     private fun setupWorkManager() {
-        val workRequest = PeriodicWorkRequestBuilder<DataSyncWorker>(
-            repeatInterval = 30,
-            repeatIntervalTimeUnit = TimeUnit.MINUTES
-        ).setConstraints(
-            Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .setRequiresBatteryNotLow(true)
-                .build()
-        ).setBackoffCriteria(
-            BackoffPolicy.EXPONENTIAL,
-            1,
-            TimeUnit.MINUTES
-        ).build()
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "data_sync",
-            ExistingPeriodicWorkPolicy.KEEP,
-            workRequest
+        agentLog(
+            hypothesisId = "H1",
+            location = "KubMiApplication:setupWorkManager",
+            message = "Configuring twice-daily sync",
+            data = mapOf(
+                "factory" to workerFactory::class.java.simpleName
+            )
         )
 
-        // Timber.d("WorkManager setup completed for data synchronization")
+        // Twice-daily exact alarms with WorkManager fallback.
+        WorkScheduler.scheduleDailySync(this)
+        // Ensure we have data on first app start without waiting for alarm.
+        WorkScheduler.enqueueImmediateSync(this, reason = "app_start")
     }
 
     /**
