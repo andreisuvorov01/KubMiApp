@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import javax.inject.Inject
@@ -21,6 +22,8 @@ class NewsViewModel @Inject constructor(
 
     private val _newsState = MutableStateFlow<List<News>>(emptyList())
     val newsState: StateFlow<List<News>> = _newsState.asStateFlow()
+
+    val pdfSlidesState: Flow<List<News>> = newsRepository.getPdfSlides()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -45,10 +48,17 @@ class NewsViewModel @Inject constructor(
     }
 
     fun refreshNews() {
+        if (_isLoading.value) return // Prevent multiple concurrent refreshes
+        
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                newsRepository.refreshNews()
+                // Only force network if we have no news at all
+                val currentNews = _newsState.value
+                val force = currentNews.isEmpty()
+                newsRepository.refreshNews(forceNetwork = force)
+            } catch (e: Exception) {
+                Log.e("KubMI_NewsVM", "Error refreshing news", e)
             } finally {
                 _isLoading.value = false
             }

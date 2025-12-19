@@ -1,6 +1,9 @@
 package com.example.kubmi
 
+import android.app.ActivityOptions
 import android.content.Intent
+import android.app.UiModeManager
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -81,11 +84,9 @@ class MainActivity : ComponentActivity() {
                 "data" to data,
                 "timestamp" to System.currentTimeMillis()
             )
-            File("d:\\AndroidProject\\.cursor\\debug.log").appendText(
-                JSONObject(payload).toString() + "\n"
-            )
+            val json = JSONObject(payload).toString()
+            Log.d("DEBUG_LOG", json)
         } catch (_: Exception) {
-            // avoid impacting UI
         }
     }
     // #endregion
@@ -118,8 +119,10 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberAnimatedNavController()
                     val newsViewModel: NewsViewModel = hiltViewModel()
                     val newsList by newsViewModel.newsState.collectAsState()
-                    val screensaverImages = remember(newsList) {
-                        newsList.mapNotNull { it.imageUrl }.distinct()
+                    val pdfSlides by newsViewModel.pdfSlidesState.collectAsState(initial = emptyList())
+                    
+                    val screensaverImages = remember(pdfSlides) {
+                        pdfSlides.mapNotNull { it.imageUrl }.distinct()
                     }
                     Box(modifier = Modifier.fillMaxSize()) {
                         NavGraph(navController = navController)
@@ -272,7 +275,11 @@ class MainActivity : ComponentActivity() {
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
-        startActivity(intent)
+        val options = ActivityOptions.makeBasic()
+        if (Build.VERSION.SDK_INT >= 34) {
+            options.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+        }
+        startActivity(intent, options.toBundle())
     }
 
     private fun scheduleReturnIfNeeded() {
@@ -297,6 +304,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startOverlayServiceIfAllowed() {
+        if (isTvDevice()) return // Skip overlay service on TV
+        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
             startService(Intent(this, OverlayService::class.java))
             Log.d(TAG, "#D(run2|C) OverlayService started.")
@@ -305,16 +314,31 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun isTvDevice(): Boolean {
+        val uiModeManager = getSystemService(UI_MODE_SERVICE) as UiModeManager
+        return uiModeManager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+    }
+
     private fun checkOverlayPermission() {
+        if (isTvDevice()) {
+            Log.d(TAG, "#D(run2|D) Skipping overlay permission check on TV device.")
+            return
+        }
+        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
             val intent = Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:$packageName")
             )
-            startActivityForResult(intent, OVERLAY_PERMISSION_REQUEST_CODE)
-            Log.d(TAG, "#D(run2|D) Requesting SYSTEM_ALERT_WINDOW permission.")
+            if (intent.resolveActivity(packageManager) != null) {
+                allowTemporaryExit()
+                startActivityForResult(intent, OVERLAY_PERMISSION_REQUEST_CODE)
+                Log.d(TAG, "#D(run2|D) Requesting SYSTEM_ALERT_WINDOW permission.")
+            } else {
+                Log.e(TAG, "#D(run2|D) Settings.ACTION_MANAGE_OVERLAY_PERMISSION not resolvable.")
+            }
         } else {
-            Log.d(TAG, "#D(run2|D) SYSTEM_ALERT_WINDOW permission already granted.")
+            Log.d(TAG, "#D(run2|D) SYSTEM_ALERT_WINDOW permission already granted or not needed.")
         }
     }
 

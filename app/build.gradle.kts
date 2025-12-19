@@ -8,9 +8,7 @@ plugins {
 
 android {
     namespace = "com.example.kubmi"
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 35
 
     signingConfigs {
         create("release") {
@@ -24,7 +22,7 @@ android {
     defaultConfig {
         applicationId = "com.example.kubmi"
         minSdk = 23
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 2
         versionName = "1.0.1"
 

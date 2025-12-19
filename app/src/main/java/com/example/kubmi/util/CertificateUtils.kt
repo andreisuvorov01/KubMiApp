@@ -31,10 +31,10 @@ object CertificateUtils {
      */
     fun createCertificatePinner(): CertificatePinner {
         return CertificatePinner.Builder()
-            // Primary certificate pin (placeholder - should be replaced with actual hash)
-            .add("kubmi.ru", "sha256/placeholder1111111111111111111111111111111111111111111=")
-            // Backup certificate pin (placeholder - should be replaced with actual hash)
-            .add("kubmi.ru", "sha256/placeholder2222222222222222222222222222222222222222222=")
+            // Реальные хеши сертификатов kubmi.ru из ваших логов
+            .add("kubmi.ru", "sha256/zGSJI/nadJFb0JM6Mkv90luKw3/drYdSTd3S0SmqyGM=")
+            .add("kubmi.ru", "sha256/kZwN96eHtZftBWrOZUsd6cA4es80n3NzSk/XtYz2EqQ=")
+            .add("kubmi.ru", "sha256/C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=")
             .build()
     }
     

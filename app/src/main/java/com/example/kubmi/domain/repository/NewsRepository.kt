@@ -7,6 +7,8 @@ interface NewsRepository {
     fun getAllNews(): Flow<List<News>>
     fun observeNewsById(id: String): Flow<News?>
     suspend fun getNewsById(id: String): News?
+    suspend fun getAllNewsSync(): List<News>
+    fun getPdfSlides(): Flow<List<News>>
     suspend fun refreshNews(forceNetwork: Boolean = false)
     suspend fun refreshNewsArticle(id: String)
 }

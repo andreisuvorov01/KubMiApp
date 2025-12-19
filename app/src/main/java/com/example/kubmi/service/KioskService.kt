@@ -1,6 +1,7 @@
 package com.example.kubmi.service
 
 import android.app.ActivityManager
+import android.app.ActivityOptions
 import android.app.AppOpsManager
 import android.app.Notification
 import android.app.NotificationChannel
@@ -75,7 +76,13 @@ class KioskService : Service() {
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
             }
-            runCatching { startActivity(launchIntent) }
+            runCatching { 
+                val options = ActivityOptions.makeBasic()
+                if (Build.VERSION.SDK_INT >= 34) {
+                    options.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                }
+                startActivity(launchIntent, options.toBundle()) 
+            }
         }
     }
 

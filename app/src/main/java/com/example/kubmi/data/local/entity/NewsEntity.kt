@@ -13,5 +13,6 @@ data class NewsEntity(
     val imageUrl: String?,
     val fullText: String? = null,
     val contentBlocksJson: String? = null,
+    val isPdfSlide: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
 )

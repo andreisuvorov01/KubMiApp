@@ -1,8 +1,10 @@
 package com.example.kubmi.receiver
 
+import android.app.ActivityOptions
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 import com.example.kubmi.MainActivity
 import com.example.kubmi.service.KioskService
@@ -38,10 +40,14 @@ class BootReceiver : BroadcastReceiver() {
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
             }
-            context.startActivity(startIntent)
+            
+            val options = ActivityOptions.makeBasic()
+            if (Build.VERSION.SDK_INT >= 34) {
+                options.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+            }
+            context.startActivity(startIntent, options.toBundle())
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start MainActivity", e)
-            // Implement fallback mechanism if needed
         }
     }
 }

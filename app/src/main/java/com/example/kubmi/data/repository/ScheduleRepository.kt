@@ -13,6 +13,8 @@ import timber.log.Timber
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.File
 import javax.inject.Inject
 
 class ScheduleRepositoryImpl @Inject constructor(
@@ -80,9 +82,7 @@ class ScheduleRepositoryImpl @Inject constructor(
 
     override suspend fun getStudentGroupsTable(forceNetwork: Boolean): StudentGroupsTable = withContext(Dispatchers.IO) {
         Log.i("KubMI_Repo", "getStudentGroupsTable() called forceNetwork=$forceNetwork")
-        // #region agent log
-        Log.d("KubMI_Debug", "[A] getStudentGroupsTable: Starting network request")
-        // #endregion
+        
         try {
             if (!forceNetwork) {
                 parserCache.readGroupsTable()?.let {
@@ -96,23 +96,14 @@ class ScheduleRepositoryImpl @Inject constructor(
                 .timeout(15000)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 .get()
-            // #region agent log
-            Log.d("KubMI_Debug", "[A] getStudentGroupsTable: Page fetched successfully, HTML length=${doc.html().length}")
-            // #endregion
-            Log.i("KubMI_Repo", "Page fetched, parsing table...")
-
+            
             val table = webScraper.parseStudentGroupsTableFromPage(doc)
             val nonEmpty = table.rows.sumOf { r -> r.count { it != null } }
             parserCache.writeGroupsTable(table)
-            // #region agent log
-            Log.d("KubMI_Debug", "[C] getStudentGroupsTable: Parsed table - headers=${table.headers.size}, rows=${table.rows.size}, nonEmpty=$nonEmpty")
-            // #endregion
+
             Log.i("KubMI_Repo", "getStudentGroupsTable(): headers=${table.headers.size}, rows=${table.rows.size}, nonEmptyCells=$nonEmpty")
             table
         } catch (e: Exception) {
-            // #region agent log
-            Log.e("KubMI_Debug", "[D] getStudentGroupsTable: EXCEPTION - ${e.javaClass.simpleName}: ${e.message}")
-            // #endregion
             Log.e("KubMI_Repo", "Error parsing student groups table from web: ${e.message}", e)
             StudentGroupsTable(headers = emptyList(), rows = emptyList())
         }
@@ -124,6 +115,7 @@ class ScheduleRepositoryImpl @Inject constructor(
     override suspend fun getAllGroups(forceNetwork: Boolean): List<ScheduleIndexEntry> = withContext(Dispatchers.IO) {
         try {
             if (!forceNetwork) {
+                // Сначала пытаемся прочитать из полноценной таблицы
                 parserCache.readGroupsTable()?.let { table ->
                     val cached = table.rows.flatten().filterNotNull()
                     if (cached.isNotEmpty()) {
@@ -139,12 +131,11 @@ class ScheduleRepositoryImpl @Inject constructor(
                 .get()
             
             val groups = webScraper.parseGroupEntriesFromPage(doc)
-            parserCache.writeGroupsTable(
-                StudentGroupsTable(
-                    headers = emptyList(),
-                    rows = listOf(groups.map { it as ScheduleIndexEntry? })
-                )
-            )
+            
+            // НЕ перезаписываем основную таблицу плоским списком, 
+            // так как это портит отображение в UI.
+            // Вместо этого просто возвращаем список.
+            
             Timber.d("Parsed ${groups.size} group entries from student schedule page")
             groups
         } catch (e: Exception) {

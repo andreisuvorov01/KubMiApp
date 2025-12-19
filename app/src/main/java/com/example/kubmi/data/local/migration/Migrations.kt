@@ -54,4 +54,11 @@ object Migrations {
             // Schema unchanged between 5 and 6
         }
     }
+
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // Add isPdfSlide column to news table
+            database.execSQL("ALTER TABLE `news` ADD COLUMN `isPdfSlide` INTEGER NOT NULL DEFAULT 0")
+        }
+    }
 }

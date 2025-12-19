@@ -6,8 +6,14 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface NewsDao {
-    @Query("SELECT * FROM news ORDER BY timestamp DESC")
+    @Query("SELECT * FROM news WHERE isPdfSlide = 0 ORDER BY timestamp DESC")
     fun getAllNews(): Flow<List<NewsEntity>>
+
+    @Query("SELECT * FROM news WHERE isPdfSlide = 0 ORDER BY timestamp DESC")
+    suspend fun getAllNewsSync(): List<NewsEntity>
+
+    @Query("SELECT * FROM news WHERE isPdfSlide = 1 ORDER BY timestamp DESC")
+    fun getPdfSlides(): Flow<List<NewsEntity>>
 
     @Query("SELECT * FROM news WHERE id = :id")
     fun observeNewsById(id: String): Flow<NewsEntity?>
