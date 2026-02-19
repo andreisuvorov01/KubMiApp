@@ -91,8 +91,8 @@ class ScheduleRepositoryImpl @Inject constructor(
                 }
             }
 
-            Log.i("KubMI_Repo", "Connecting to kubmi.ru/raspisanie-zanyatij-studentov-panel/")
-            val doc = org.jsoup.Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-studentov-panel/")
+            Log.i("KubMI_Repo", "Connecting to kubmi.ru/raspisanie-zanyatij-studentov/")
+            val doc = org.jsoup.Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-studentov/")
                 .timeout(15000)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 .get()
@@ -125,7 +125,7 @@ class ScheduleRepositoryImpl @Inject constructor(
                 }
             }
 
-            val doc = org.jsoup.Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-studentov-panel/")
+            val doc = org.jsoup.Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-studentov/")
                 .timeout(15000)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 .get()
@@ -160,8 +160,8 @@ class ScheduleRepositoryImpl @Inject constructor(
                 }
             }
 
-            Log.i("KubMI_Repo", "Connecting to kubmi.ru/raspisanie-zanyatij-prepodavatelej-panel/")
-            val doc = org.jsoup.Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-prepodavatelej-panel/")
+            Log.i("KubMI_Repo", "Connecting to kubmi.ru/raspisanie-zanyatij-prepodavatelej/")
+            val doc = org.jsoup.Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-prepodavatelej/")
                 .timeout(15000)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 .get()

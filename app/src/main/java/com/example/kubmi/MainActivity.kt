@@ -2,8 +2,9 @@ package com.example.kubmi
 
 import android.app.ActivityOptions
 import android.content.Intent
-import android.app.UiModeManager
+import android.content.Context
 import android.content.res.Configuration
+import android.app.UiModeManager
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -14,6 +15,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,8 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.accompanist.navigation.animation.rememberAnimatedNavController
-import androidx.tv.material3.ExperimentalTvMaterial3Api
-import androidx.tv.material3.Surface
+import androidx.compose.material3.Surface
 import androidx.compose.animation.ExperimentalAnimationApi
 import com.example.kubmi.presentation.navigation.NavGraph
 import com.example.kubmi.presentation.screens.news.NewsViewModel
@@ -58,6 +59,19 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "#D(run2|B) screensaverRunnable executed, showScreensaver is now: $showScreensaver")
     }
     private var showScreensaver by mutableStateOf(false) // State for screensaver visibility
+
+    // Kiosk exit timer related variables
+    private val kioskExitHandler = Handler(Looper.getMainLooper())
+    private val kioskExitRunnable = Runnable {
+        checkAndEnableKioskMode()
+    }
+
+    // Back press callback to disable hardware back button
+    private val backPressedCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            // Disable hardware back to prevent leaving the kiosk flow.
+        }
+    }
 
     companion object {
         private const val TAG = "MainActivity"
@@ -91,11 +105,25 @@ class MainActivity : ComponentActivity() {
     }
     // #endregion
 
-    @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalAnimationApi::class)
+    @OptIn(ExperimentalAnimationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Reset exit window on start to ensure kiosk mode is enabled immediately on cold start
+        kioskPrefs.edit().putLong(KioskService.KEY_ALLOW_EXIT_UNTIL, 0L).apply()
+        
         KioskManager.enableKioskMode(this)
+        
+        // Check if this is a TV device - on TV, we might not want to use lock task
+        val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+        if (uiModeManager.currentModeType != Configuration.UI_MODE_TYPE_TELEVISION) {
+            KioskManager.startLockTask(this)
+        }
+        
         KioskService.start(this)
+
+        // Register back pressed callback to disable hardware back button
+        onBackPressedDispatcher.addCallback(this, backPressedCallback)
 
         checkOverlayPermission()
         startOverlayServiceIfAllowed() // Call this here to start the service if permission is already granted
@@ -150,6 +178,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         resetScreensaverTimer()
+        scheduleKioskExitCheck()
     }
 
     private fun resetScreensaverTimer() {
@@ -190,7 +219,20 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         returnHandler.removeCallbacksAndMessages(null) // Cancel pending bring-to-foreground callbacks to avoid lifecycle bounce
-        KioskManager.enableKioskMode(this)
+
+        if (!isTemporaryExitAllowed()) {
+            KioskManager.enableKioskMode(this)
+            
+            // Check if this is a TV device - on TV, we might not want to use lock task
+            val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+            if (uiModeManager.currentModeType != Configuration.UI_MODE_TYPE_TELEVISION) {
+                KioskManager.startLockTask(this)
+            }
+            
+            // Restart kiosk service if it was stopped during admin exit
+            KioskService.start(this)
+        }
+
         resetScreensaverTimer()
         Log.d(TAG, "#D(run2|F) onResume called.")
     }
@@ -199,14 +241,7 @@ class MainActivity : ComponentActivity() {
         return if (isBlockedKey(keyCode)) true else super.onKeyDown(keyCode, event)
     }
 
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_DOWN && isBlockedKey(event.keyCode)) return true
-        return super.dispatchKeyEvent(event)
-    }
 
-    override fun onBackPressed() {
-        // Disable hardware back to prevent leaving the kiosk flow.
-    }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
@@ -225,22 +260,44 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         screensaverHandler.removeCallbacks(screensaverRunnable)
-        Log.d(TAG, "#D(run2|F) onDestroy called, screensaver timer stopped.")
+        kioskExitHandler.removeCallbacks(kioskExitRunnable)
+        Log.d(TAG, "#D(run2|F) onDestroy called, screensaver and kiosk exit timers stopped.")
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
-            KioskManager.enableKioskMode(this)
-            Log.d(TAG, "#D(run2|A) Window focus gained, KioskMode enabled.")
+            if (!isTemporaryExitAllowed()) {
+                KioskManager.enableKioskMode(this)
+                
+                // Check if this is a TV device - on TV, we might not want to use lock task
+                val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+                if (uiModeManager.currentModeType != Configuration.UI_MODE_TYPE_TELEVISION) {
+                    KioskManager.startLockTask(this)
+                }
+                
+                // Restart kiosk service if it was stopped during admin exit
+                KioskService.start(this)
+                Log.d(TAG, "#D(run2|A) Window focus gained, KioskMode enabled.")
+            } else {
+                Log.d(TAG, "#D(run2|A) Window focus gained, but exit is allowed. KioskMode NOT enabled.")
+                scheduleKioskExitCheck()
+            }
         } else {
             Log.d(TAG, "#D(run2|A) Window focus lost.")
+            if (!isTemporaryExitAllowed()) {
+                // If focus lost unexpectedly (e.g. system dialog or notification), try to regain focus
+                bringAppToForeground()
+                
+                // Also close system dialogs if possible
+                val closeDialogs = Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS)
+                sendBroadcast(closeDialogs)
+            }
         }
     }
 
     private fun isBlockedKey(keyCode: Int): Boolean {
         return when (keyCode) {
-            KeyEvent.KEYCODE_BACK,
             KeyEvent.KEYCODE_HOME,
             KeyEvent.KEYCODE_APP_SWITCH,
             KeyEvent.KEYCODE_MENU,
@@ -296,6 +353,7 @@ class MainActivity : ComponentActivity() {
                 System.currentTimeMillis() + KioskService.ALLOW_EXIT_WINDOW_MS
             )
             .apply()
+        scheduleKioskExitCheck()
     }
 
     private fun isTemporaryExitAllowed(): Boolean {
@@ -315,7 +373,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun isTvDevice(): Boolean {
-        val uiModeManager = getSystemService(UI_MODE_SERVICE) as UiModeManager
+        val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
         return uiModeManager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
     }
 
@@ -354,6 +412,32 @@ class MainActivity : ComponentActivity() {
     private fun updateScreensaverState(newValue: Boolean) {
         showScreensaver = newValue
         markScreensaverShown()
+    }
+
+    private fun checkAndEnableKioskMode() {
+        if (!isTemporaryExitAllowed() && !KioskManager.isDeviceOwner(this)) {
+            Log.d(TAG, "#D(run2|K) Exit window expired, re-enabling kiosk mode")
+            KioskManager.enableKioskMode(this)
+            KioskManager.startLockTask(this)
+            KioskService.start(this)
+        } else if (isTemporaryExitAllowed()) {
+            // Schedule next check when exit is still allowed
+            val remainingMs = kioskPrefs.getLong(KioskService.KEY_ALLOW_EXIT_UNTIL, 0L) - System.currentTimeMillis()
+            if (remainingMs > 0) {
+                kioskExitHandler.postDelayed(kioskExitRunnable, minOf(remainingMs, 5000L)) // Check every 5 seconds max
+            }
+        }
+    }
+
+    private fun scheduleKioskExitCheck() {
+        kioskExitHandler.removeCallbacks(kioskExitRunnable)
+        if (isTemporaryExitAllowed()) {
+            val remainingMs = kioskPrefs.getLong(KioskService.KEY_ALLOW_EXIT_UNTIL, 0L) - System.currentTimeMillis()
+            if (remainingMs > 0) {
+                kioskExitHandler.postDelayed(kioskExitRunnable, minOf(remainingMs + 1000L, 5000L)) // Check 1 second after expiry, max 5 seconds
+                Log.d(TAG, "#D(run2|K) Scheduled kiosk exit check in ${minOf(remainingMs + 1000L, 5000L)}ms")
+            }
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {

@@ -272,8 +272,7 @@ fun AdminMainScreen(navController: NavController) {
         ) {
             // Kiosk Settings Button - most important
             Button(
-                onClick = { 
-                    allowAdminExit(context)
+                onClick = {
                     navController.navigate(Screen.KioskSettings.route)
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -344,7 +343,13 @@ fun AdminMainScreen(navController: NavController) {
             
             // Exit app button at the bottom
             Button(
-                onClick = { (context as? Activity)?.finish() },
+                onClick = { 
+                    (context as? Activity)?.let { activity ->
+                        com.example.kubmi.util.KioskManager.disableKioskMode(activity)
+                        com.example.kubmi.util.KioskManager.stopLockTask(activity)
+                        activity.finish()
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.error
@@ -364,5 +369,12 @@ private fun allowAdminExit(context: Context) {
             System.currentTimeMillis() + KioskService.ADMIN_EXIT_WINDOW_MS
         )
         .apply()
+    
+    // Disable kiosk mode and stop lock task when exiting
+    (context as? Activity)?.let { activity ->
+        com.example.kubmi.util.KioskManager.disableKioskMode(activity)
+        com.example.kubmi.util.KioskManager.stopLockTask(activity)
+    }
+    
     context.stopService(Intent(context, KioskService::class.java))
 }

@@ -45,10 +45,10 @@ class ParserCache @Inject constructor(
             newsFile,
             NEWS_VERSION,
             object : TypeToken<Payload<List<News>>>() {}.type
-        )?.data
+        )?.data?.sortedByDescending { it.timestamp }
 
     suspend fun writeNews(items: List<News>) {
-        writePayload(newsFile, NEWS_VERSION, items)
+        writePayload(newsFile, NEWS_VERSION, items.sortedByDescending { it.timestamp })
     }
 
     suspend fun readGroupsTable(): StudentGroupsTable? =

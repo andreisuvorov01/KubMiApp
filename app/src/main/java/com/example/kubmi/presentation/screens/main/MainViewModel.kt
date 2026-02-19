@@ -61,6 +61,9 @@ class MainViewModel @Inject constructor(
      * Automatically stops collecting when UI is not active (WhileSubscribed).
      */
     val news: StateFlow<List<News>> = newsRepository.getAllNews()
+        .map { newsList ->
+            newsList.sortedByDescending { it.timestamp }
+        }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5000),

@@ -16,5 +16,6 @@ data class News(
      * Plain full text of the article (best-effort). Null/empty when not fetched yet.
      */
     val fullText: String? = null,
-    val isPdfSlide: Boolean = false
+    val isPdfSlide: Boolean = false,
+    val timestamp: Long = System.currentTimeMillis()
 )

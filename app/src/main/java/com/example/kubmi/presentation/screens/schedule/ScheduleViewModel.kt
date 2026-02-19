@@ -88,15 +88,10 @@ class ScheduleViewModel @Inject constructor(
                 Log.d("KubMI_Debug", "[E] loadAllTeachers: Repository returned ${teachers.size} teachers")
                 // #endregion
                 Log.i("KubMI_Schedule", "getAllTeachers returned: ${teachers.size} entries")
-                if (teachers.isEmpty()) {
-                    Log.w("KubMI_Schedule", "Teachers list is empty; falling back to mock")
-                    _teachersState.value = getMockTeachers()
-                } else {
-                    _teachersState.value = teachers
-                }
+                _teachersState.value = teachers
             } catch (e: Exception) {
                 Log.e("KubMI_Schedule", "Error loading teachers: ${e.message}", e)
-                _teachersState.value = getMockTeachers()
+                _teachersState.value = emptyList()
             }
         }
     }
@@ -153,10 +148,4 @@ class ScheduleViewModel @Inject constructor(
         return StudentGroupsTable(headers = headers, rows = rows)
     }
     
-    private fun getMockTeachers() = listOf(
-        "Иванов И.И.", "Петров П.П.", "Сидоров С.С.", "Смирнова А.А.",
-        "Волков В.В.", "Козлова К.К.", "Морозов М.М.", "Николаева Н.Н.",
-        "Федоров Ф.Ф.", "Павлова П.П.", "Семенов С.С.", "Григорьева Г.Г.",
-        "Тихонов Т.Т.", "Лебедева Л.Л.", "Зайцев З.З.", "Яковлева Я.Я."
-    ).map { ScheduleIndexEntry(title = it, url = "") }
 }

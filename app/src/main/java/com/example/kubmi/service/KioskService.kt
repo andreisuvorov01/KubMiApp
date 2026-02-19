@@ -11,6 +11,8 @@ import android.app.Service
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
+import android.content.res.Configuration
+import android.app.UiModeManager
 import android.content.Intent
 import android.os.Build
 import android.os.Handler
@@ -69,19 +71,28 @@ class KioskService : Service() {
         com.example.kubmi.util.DebugLogger.log("C", "KioskService:ensureAppInForeground", "App not in foreground, bringing back", mapOf())
         // #endregion
 
+        // Check if this is a TV device to handle differently
+        val uiModeManager = applicationContext.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+        val isTvDevice = uiModeManager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+        
         // Try moving existing task to front before relaunching activity.
         if (!moveTaskToFront()) {
             val launchIntent = Intent(applicationContext, MainActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                
+                // On TV devices, we might need to add additional flags to ensure the activity appears
+                if (isTvDevice) {
+                    addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                }
             }
-            runCatching { 
+            runCatching {
                 val options = ActivityOptions.makeBasic()
                 if (Build.VERSION.SDK_INT >= 34) {
                     options.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
                 }
-                startActivity(launchIntent, options.toBundle()) 
+                startActivity(launchIntent, options.toBundle())
             }
         }
     }

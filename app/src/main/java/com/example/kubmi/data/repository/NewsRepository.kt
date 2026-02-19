@@ -47,7 +47,9 @@ class NewsRepositoryImpl @Inject constructor(
     override suspend fun getNewsById(id: String): News? = newsDao.getNewsById(id)?.toDomain()
 
     override suspend fun getAllNewsSync(): List<News> = withContext(Dispatchers.IO) {
-        newsDao.getAllNewsSync().map { it.toDomain() }
+        newsDao.getAllNewsSync()
+            .map { it.toDomain() }
+            .sortedByDescending { it.timestamp }
     }
 
     override fun getPdfSlides(): Flow<List<News>> = newsDao.getPdfSlides().map { entities ->
@@ -110,12 +112,13 @@ class NewsRepositoryImpl @Inject constructor(
                                     scraped.copy(
                                         imageUrl = finalImageUrl,
                                         fullText = existing?.fullText,
-                                        contentBlocks = existing?.contentBlocksJson?.let { 
+                                        contentBlocks = existing?.contentBlocksJson?.let {
                                             try {
                                                 gson.fromJson<List<NewsContentBlock>>(it, object : TypeToken<List<NewsContentBlock>>() {}.type)
                                             } catch (_: Exception) { emptyList() }
                                         } ?: emptyList(),
-                                        isPdfSlide = false
+                                        isPdfSlide = false,
+                                        timestamp = existing?.timestamp ?: now  // Сохраняем timestamp существующей новости или устанавливаем текущий
                                     )
                                 }
 
@@ -147,7 +150,8 @@ class NewsRepositoryImpl @Inject constructor(
                                                     id = "${item.id}_page_$index",
                                                     title = if (localPaths.size > 1) "${item.title} (стр. ${index + 1})" else item.title,
                                                     imageUrl = "file://$path",
-                                                    isPdfSlide = true
+                                                    isPdfSlide = true,
+                                                    timestamp = System.currentTimeMillis() // Устанавливаем текущий timestamp для PDF-слайдов
                                                 ))
                                             }
                                         }
@@ -234,7 +238,8 @@ class NewsRepositoryImpl @Inject constructor(
                         fullText = fullText ?: existing.fullText,
                         contentBlocksJson = blocksJson ?: existing.contentBlocksJson,
                         imageUrl = finalCoverUrl,
-                        isPdfSlide = false
+                        isPdfSlide = false,
+                        timestamp = existing.timestamp // Сохраняем оригинальный timestamp
                     )
                 } else {
                     var finalCoverUrl: String? = null
@@ -283,11 +288,11 @@ class NewsRepositoryImpl @Inject constructor(
         } catch (_: Exception) {
             emptyList()
         }
-        return News(id, title, description, content, date, imageUrl, blocks, fullText, isPdfSlide)
+        return News(id, title, description, content, date, imageUrl, blocks, fullText, isPdfSlide, timestamp)
     }
 
     private fun News.toEntity(): NewsEntity {
         val blocksJson = if (contentBlocks.isNotEmpty()) gson.toJson(contentBlocks) else null
-        return NewsEntity(id, title, description, content, date, imageUrl, fullText, blocksJson, isPdfSlide)
+        return NewsEntity(id, title, description, content, date, imageUrl, fullText, blocksJson, isPdfSlide, timestamp)
     }
 }

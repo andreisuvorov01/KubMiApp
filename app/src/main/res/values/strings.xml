@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">КубМИ приложение для панелей</string>
+    <string name="institute_name">Кубанский медицинский институт</string>
     <string name="back">Назад</string>
     <string name="refresh">Обновить</string>
     <string name="settings">Настройки</string>
@@ -91,6 +92,7 @@
     <string name="admin_exit_cancel">Отмена</string>
     <string name="admin_exit_error">Неверный пароль</string>
     <string name="admin_exit_success">Выход разрешён на 2 минуты</string>
+    <string name="kiosk_temporary_exit_allowed">Выход разрешен на 30 секунд</string>
     <string name="admin_exit_allow">Разрешить выход (2 мин)</string>
     <string name="device_admin_enabled">Права администратора устройства включены</string>
     <string name="device_admin_disabled">Права администратора устройства отключены</string>
@@ -111,8 +113,16 @@
     <string name="kiosk_device_admin_title">Администратор устройства</string>
     <string name="kiosk_device_admin_description">Защита от удаления приложения</string>
     
+    <string name="kiosk_device_owner_title">Владелец устройства (Device Owner)</string>
+    <string name="kiosk_device_owner_description">Максимальный уровень контроля: блокировка статус-бара и закрепление приложения без подтверждения</string>
+
+    <string name="kiosk_screen_pinning_title">Фиксация экрана (Screen Pinning)</string>
+    <string name="kiosk_screen_pinning_description">Закрепляет приложение на экране, предотвращая выход из него. Пользователь может выйти только по истечении времени или с помощью администратора.</string>
+    <string name="kiosk_screen_pinning_enabled">Фиксация экрана включена</string>
+    <string name="kiosk_screen_pinning_disabled">Фиксация экрана отключена</string>
+
     <string name="kiosk_info_title">Информация</string>
-    <string name="kiosk_info_description">Для максимальной защиты включите все разрешения. Accessibility Service — ключевой компонент для блокировки кнопок HOME и переключения приложений. После включения всех разрешений выход из приложения будет возможен только через админ-панель с паролем.</string>
+    <string name="kiosk_info_description">Для максимальной защиты включите все разрешения. Accessibility Service — ключевой компонент для блокировки кнопок HOME. Режим Device Owner позволяет полностью заблокировать системный интерфейс через ADB.</string>
     
     <string name="protection_level_title">Уровень защиты</string>
     <string name="protection_level_none">Нет защиты</string>
@@ -125,4 +135,8 @@
     <string name="disable">Отключить</string>
     
     <string name="accessibility_service_description">Служба режима киоска для блокировки кнопок HOME и переключения между приложениями. Позволяет удерживать приложение на переднем плане.</string>
+
+    <!-- TV Mode Information -->
+    <string name="kiosk_tv_mode_title">Режим Android TV</string>
+    <string name="kiosk_tv_mode_description">На устройствах Android TV фиксация экрана (Screen Pinning) недоступна. Вместо этого используется Persistent Overlay Service для автоматического возврата приложения на передний план.</string>
 </resources>

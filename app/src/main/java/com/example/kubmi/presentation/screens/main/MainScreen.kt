@@ -4,6 +4,7 @@ import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
@@ -57,6 +58,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -139,9 +141,8 @@ fun MainScreen(navController: NavController) {
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = stringResource(R.string.app_name),
-                        style = MaterialTheme.typography.headlineMedium,
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.pointerInput(Unit) {
                             detectTapGestures {
                                 agentLog(
@@ -155,7 +156,18 @@ fun MainScreen(navController: NavController) {
                                 )
                             }
                         }
-                    )
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.logo_ksmu),
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = stringResource(R.string.institute_name),
+                            style = MaterialTheme.typography.headlineMedium
+                        )
+                    }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.refreshNews() }) {

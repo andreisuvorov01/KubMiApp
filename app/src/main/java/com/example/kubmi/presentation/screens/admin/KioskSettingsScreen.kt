@@ -1,5 +1,6 @@
 package com.example.kubmi.presentation.screens.admin
 
+import android.app.Activity
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -7,7 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
@@ -20,6 +21,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.content.res.Configuration
+import android.app.UiModeManager
 import androidx.navigation.NavController
 import com.example.kubmi.R
 import com.example.kubmi.service.KioskService
@@ -34,17 +37,40 @@ fun KioskSettingsScreen(
 ) {
     val context = LocalContext.current
     var permissionStatus by remember { mutableStateOf(permissionManager.getPermissionStatus()) }
-    
+    var isLockTaskActive by remember { mutableStateOf(false) }
+
+    // Check if this is a TV device
+    val isTvDevice by remember {
+        mutableStateOf(
+            try {
+                val uiModeManager = context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+                uiModeManager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+            } catch (e: Exception) {
+                false
+            }
+        )
+    }
+
     // Refresh permission status when screen is resumed
     LaunchedEffect(Unit) {
         permissionStatus = permissionManager.getPermissionStatus()
+
+        // Only check lock task status on non-TV devices
+        if (!isTvDevice) {
+            isLockTaskActive = com.example.kubmi.util.KioskManager.isLockTaskActive(context as Activity)
+        }
     }
-    
+
     // Refresh status periodically while on this screen
     LaunchedEffect(Unit) {
         while (true) {
-            kotlinx.coroutines.delay(2000)
+            kotlinx.coroutines.delay(200)
             permissionStatus = permissionManager.getPermissionStatus()
+
+            // Only check lock task status on non-TV devices
+            if (!isTvDevice) {
+                isLockTaskActive = com.example.kubmi.util.KioskManager.isLockTaskActive(context as Activity)
+            }
         }
     }
     
@@ -55,7 +81,7 @@ fun KioskSettingsScreen(
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(
-                            imageVector = Icons.Default.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.back)
                         )
                     }
@@ -109,6 +135,17 @@ fun KioskSettingsScreen(
                 }
             )
             
+            // Device Owner status
+            PermissionItem(
+                title = stringResource(R.string.kiosk_device_owner_title),
+                description = stringResource(R.string.kiosk_device_owner_description),
+                isEnabled = permissionStatus.isDeviceOwner,
+                onEnableClick = {
+                    // Cannot enable device owner from app, show info toast
+                    android.widget.Toast.makeText(context, "Включается через ADB: adb shell dpm set-device-owner com.example.kubmi/.receiver.DeviceAdminReceiver", android.widget.Toast.LENGTH_LONG).show()
+                }
+            )
+            
             // Usage Stats Permission
             PermissionItem(
                 title = stringResource(R.string.kiosk_usage_stats_title),
@@ -119,9 +156,67 @@ fun KioskSettingsScreen(
                     permissionManager.openUsageStatsSettings()
                 }
             )
-            
+
+            // Screen Pinning Status - Only show on non-TV devices
+            if (!isTvDevice) {
+                PermissionItem(
+                    title = stringResource(R.string.kiosk_screen_pinning_title),
+                    description = stringResource(R.string.kiosk_screen_pinning_description),
+                    isEnabled = isLockTaskActive,
+                    onEnableClick = {
+                        // Enable screen pinning without exit window
+                        com.example.kubmi.util.KioskManager.enableKioskMode(context as Activity)
+                        com.example.kubmi.util.KioskManager.startLockTask(context as Activity)
+                        com.example.kubmi.service.KioskService.start(context)
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.kiosk_screen_pinning_enabled),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                        // Update status immediately
+                        isLockTaskActive = true
+                    },
+                    onDisableClick = {
+                        // Allow temporary exit when disabling screen pinning
+                        allowShortExit(context)
+                        com.example.kubmi.util.KioskManager.disableKioskMode(context as Activity)
+                        com.example.kubmi.util.KioskManager.stopLockTask(context as Activity)
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.kiosk_screen_pinning_disabled),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                        // Update status immediately
+                        isLockTaskActive = false
+                    }
+                )
+            } else {
+                // Show info card for TV devices explaining why Screen Pinning is not available
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.kiosk_tv_mode_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.kiosk_tv_mode_description),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             // Info card
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -294,7 +389,7 @@ private fun allowTemporaryExit(context: Context) {
 }
 
 /**
- * Allow only a short exit window (10 seconds) for opening settings screens
+ * Allow only a short exit window (30 seconds) for opening settings screens
  * This prevents the full 2-minute window from being activated on every button click
  */
 private fun allowShortExit(context: Context) {
@@ -302,7 +397,19 @@ private fun allowShortExit(context: Context) {
     prefs.edit()
         .putLong(
             KioskService.KEY_ALLOW_EXIT_UNTIL,
-            System.currentTimeMillis() + 10_000L // Only 10 seconds
+            System.currentTimeMillis() + 30_000L // 30 seconds
         )
         .apply()
+    
+    // Disable kiosk mode and stop lock task when exiting to system settings
+    (context as? Activity)?.let { activity ->
+        com.example.kubmi.util.KioskManager.disableKioskMode(activity)
+        com.example.kubmi.util.KioskManager.stopLockTask(activity)
+    }
+    
+    android.widget.Toast.makeText(
+        context, 
+        context.getString(R.string.kiosk_temporary_exit_allowed), 
+        android.widget.Toast.LENGTH_SHORT
+    ).show()
 }

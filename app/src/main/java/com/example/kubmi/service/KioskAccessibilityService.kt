@@ -3,7 +3,10 @@ package com.example.kubmi.service
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
+import android.content.res.Configuration
+import android.app.UiModeManager
 import android.content.Intent
+import android.os.Build
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import com.example.kubmi.MainActivity
@@ -99,12 +102,35 @@ class KioskAccessibilityService : AccessibilityService() {
         if (event == null || isTemporaryExitAllowed()) return
         
         when (event.eventType) {
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                val packageName = event.packageName?.toString() ?: return
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> {
+                val packageName = event.packageName?.toString()
+                
+                // If package name is null, we might still want to check windows
+                if (packageName == null) {
+                    checkCurrentWindows()
+                    return
+                }
                 
                 // If a non-allowed package comes to foreground, return to our app
                 if (!isAllowedPackage(packageName)) {
+                    // #region agent log
+                    com.example.kubmi.util.DebugLogger.log("A", "KioskAccessibilityService:onAccessibilityEvent", "Unauthorized app detected", mapOf("packageName" to packageName))
+                    // #endregion
                     returnToApp()
+                }
+            }
+        }
+    }
+
+    private fun checkCurrentWindows() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            val windows = windows
+            for (window in windows) {
+                if (window.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION) {
+                    // We can't easily get the package name from WindowInfo in all cases, 
+                    // but we can try to see if it's our window.
+                    // For kiosk, we mostly rely on packageName from the event.
                 }
             }
         }
@@ -154,11 +180,28 @@ class KioskAccessibilityService : AccessibilityService() {
     }
 
     private fun returnToApp() {
-        val intent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        // Check if this is a TV device - on TV, we might need different approach
+        val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
+        if (uiModeManager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) {
+            // On TV, performGlobalAction(GLOBAL_ACTION_HOME) might not work as expected
+            // Instead, try to bring our app to foreground more directly
+            val intent = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            startActivity(intent)
+        } else {
+            // On non-TV devices, use the original approach
+            // Aggressively perform HOME action to dismiss any current task
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            
+            val intent = Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+            startActivity(intent)
         }
-        startActivity(intent)
     }
 }

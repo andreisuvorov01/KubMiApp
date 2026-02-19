@@ -162,8 +162,8 @@ class WebScraper @Inject constructor() {
             val lowerUrl = url.lowercase(Locale.ROOT)
             
             // Фильтруем пустые заголовки и технические страницы-заглушки (1.htm, 1.html)
-            if (title.isNotEmpty() && 
-                !lowerUrl.endsWith("/raspisanie/1.htm") && 
+            if (title.isNotEmpty() &&
+                !lowerUrl.endsWith("/raspisanie/1.htm") &&
                 !lowerUrl.endsWith("/raspisanie/1.html") &&
                 !lowerUrl.endsWith("/1.htm") &&
                 !lowerUrl.endsWith("/1.html")) {
@@ -395,13 +395,14 @@ class WebScraper @Inject constructor() {
             description = description,
             content = description,
             date = date,
-            imageUrl = imageUrl
+            imageUrl = imageUrl,
+            timestamp = System.currentTimeMillis()
         )
     }
 
     suspend fun scrapeStudentSchedule(group: String = ""): List<WeeklyScheduleData> {
         return try {
-            val doc = Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-studentov-panel/").timeout(15000).get()
+            val doc = Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-studentov/").timeout(15000).get()
             if (group.isNotEmpty()) {
                 val groupUrl = findGroupUrl(doc, group)
                 if (groupUrl != null) return getScheduleFromGroupPage(groupUrl, group)
@@ -421,8 +422,17 @@ class WebScraper @Inject constructor() {
     
     private suspend fun findGroupUrl(doc: org.jsoup.nodes.Document, group: String): String? {
         val targetKey = normalizeGroupKey(group)
-        val links = doc.select("figure.wp-block-table table a[href]").ifEmpty { doc.select("table a[href]") }
-        return links.firstOrNull { normalizeGroupKey(it.text()) == targetKey }?.absUrl("href")
+        val links = doc.select("a[href*='raspisanie']").filter { link ->
+            val text = link.text().trim()
+            text.isNotEmpty() && (normalizeGroupKey(text) == targetKey || text.contains(group, ignoreCase = true))
+        }
+        if (links.isNotEmpty()) {
+            return links.first().absUrl("href")
+        }
+        
+        // Резервный вариант - ищем в таблицах
+        val tableLinks = doc.select("figure.wp-block-table table a[href]").ifEmpty { doc.select("table a[href]") }
+        return tableLinks.firstOrNull { normalizeGroupKey(it.text()) == targetKey }?.absUrl("href")
     }
     
     private suspend fun getScheduleFromGroupPage(url: String, group: String): List<WeeklyScheduleData> {
@@ -456,7 +466,7 @@ class WebScraper @Inject constructor() {
 
     suspend fun scrapeTeacherSchedule(teacher: String = ""): List<WeeklyScheduleData> {
         return try {
-            val doc = Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-prepodavatelej-panel/").timeout(15000).get()
+            val doc = Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-prepodavatelej/").timeout(15000).get()
             if (teacher.isNotEmpty()) {
                 findTeacherUrl(doc, teacher)?.let { return getScheduleFromTeacherPage(it, teacher) }
                 return emptyList()
@@ -475,8 +485,17 @@ class WebScraper @Inject constructor() {
     
     private suspend fun findTeacherUrl(doc: org.jsoup.nodes.Document, teacher: String): String? {
         val targetKey = normalizeTeacherKey(teacher)
-        val links = doc.select("figure.wp-block-table table a[href]").ifEmpty { doc.select("table a[href]") }
-        return links.firstOrNull { normalizeTeacherKey(it.text()) == targetKey }?.absUrl("href")
+        val links = doc.select("a[href*='raspisanie']").filter { link ->
+            val text = link.text().trim()
+            text.isNotEmpty() && (normalizeTeacherKey(text) == targetKey || text.contains(teacher, ignoreCase = true))
+        }
+        if (links.isNotEmpty()) {
+            return links.first().absUrl("href")
+        }
+        
+        // Резервный вариант - ищем в таблицах
+        val tableLinks = doc.select("figure.wp-block-table table a[href]").ifEmpty { doc.select("table a[href]") }
+        return tableLinks.firstOrNull { normalizeTeacherKey(it.text()) == targetKey }?.absUrl("href")
     }
     
     private suspend fun getScheduleFromTeacherPage(url: String, teacher: String): List<WeeklyScheduleData> {
@@ -529,7 +548,7 @@ class WebScraper @Inject constructor() {
                 val title = link.text().trim().ifBlank { "Памятка ГО и ЧС" }
                 val url = link.absUrl("href")
                 Log.d("ScreensaverDebug", "PDF Link: $title -> $url")
-                News(id = url, title = title, description = "Материалы ГО и ЧС", content = "Информационный материал в формате PDF", date = "ГО и ЧС", imageUrl = url)
+                News(id = url, title = title, description = "Материалы ГО и ЧС", content = "Информационный материал в формате PDF", date = "ГО и ЧС", imageUrl = url, timestamp = System.currentTimeMillis())
             }
         } catch (e: Exception) { 
             Log.e("ScreensaverDebug", "Failed to scrape GO i CHS PDFs", e)
@@ -538,13 +557,31 @@ class WebScraper @Inject constructor() {
     }
 
     suspend fun parseGroupsFromPage(doc: org.jsoup.nodes.Document): List<String> {
-        val links = doc.select("figure.wp-block-table table a[href]").ifEmpty { doc.select("table a[href]") }
-        return links.map { normalizeSpaces(it.text()) }.filter { it.isNotBlank() }.distinct()
+        val links = doc.select("a[href*='raspisanie']").filter { link ->
+            val text = link.text().trim()
+            text.isNotEmpty() && !text.equals("1", ignoreCase = true) && !text.equals("к списку", ignoreCase = true)
+        }
+        if (links.isNotEmpty()) {
+            return links.map { normalizeSpaces(it.text()) }.filter { it.isNotBlank() }.distinct()
+        }
+        
+        // Резервный вариант - ищем в таблицах
+        val tableLinks = doc.select("figure.wp-block-table table a[href]").ifEmpty { doc.select("table a[href]") }
+        return tableLinks.map { normalizeSpaces(it.text()) }.filter { it.isNotBlank() }.distinct()
     }
 
     suspend fun parseTeachersFromPage(doc: org.jsoup.nodes.Document): List<String> {
-        val links = doc.select("figure.wp-block-table table a[href]").ifEmpty { doc.select("table a[href]") }
-        return links.map { normalizeTeacherDisplay(it.text()) }.filter { it.isNotBlank() }.distinct()
+        val links = doc.select("a[href*='raspisanie']").filter { link ->
+            val text = link.text().trim()
+            text.isNotEmpty() && !text.equals("1", ignoreCase = true) && !text.equals("к списку", ignoreCase = true)
+        }
+        if (links.isNotEmpty()) {
+            return links.map { normalizeTeacherDisplay(it.text()) }.filter { it.isNotBlank() }.distinct()
+        }
+        
+        // Резервный вариант - ищем в таблицах
+        val tableLinks = doc.select("figure.wp-block-table table a[href]").ifEmpty { doc.select("table a[href]") }
+        return tableLinks.map { normalizeTeacherDisplay(it.text()) }.filter { it.isNotBlank() }.distinct()
     }
 
     private fun determineLessonType(subject: String): LessonType {

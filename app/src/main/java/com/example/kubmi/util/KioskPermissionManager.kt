@@ -8,6 +8,8 @@ import android.content.Intent
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
+import android.content.res.Configuration
+import android.app.UiModeManager
 import com.example.kubmi.receiver.DeviceAdminReceiver
 import com.example.kubmi.service.KioskAccessibilityService
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -30,6 +32,7 @@ class KioskPermissionManager @Inject constructor(
         val isAccessibilityEnabled: Boolean,
         val isUsageStatsEnabled: Boolean,
         val isDeviceAdminEnabled: Boolean,
+        val isDeviceOwner: Boolean,
         val isDefaultLauncher: Boolean,
         val overallProtectionLevel: ProtectionLevel
     )
@@ -39,7 +42,7 @@ class KioskPermissionManager @Inject constructor(
         BASIC,      // Just launcher + watchdog service
         MEDIUM,     // + Usage stats or accessibility
         HIGH,       // + Both usage stats and accessibility (maximum without device admin)
-        MAXIMUM     // All permissions enabled
+        MAXIMUM     // All permissions enabled + Device Owner
     }
     
     /**
@@ -49,17 +52,19 @@ class KioskPermissionManager @Inject constructor(
         val accessibility = isAccessibilityServiceEnabled()
         val usageStats = isUsageStatsPermissionGranted()
         val launcher = isDefaultLauncher()
+        val deviceOwner = isDeviceOwner()
         
         // #region agent log
-        DebugLogger.log("A", "KioskPermissionManager:getPermissionStatus", "Permission status", mapOf("accessibility" to accessibility, "usageStats" to usageStats, "launcher" to launcher))
+        DebugLogger.log("A", "KioskPermissionManager:getPermissionStatus", "Permission status", mapOf("accessibility" to accessibility, "usageStats" to usageStats, "launcher" to launcher, "deviceOwner" to deviceOwner))
         // #endregion
         
-        val level = calculateProtectionLevel(accessibility, usageStats, launcher)
+        val level = calculateProtectionLevel(accessibility, usageStats, launcher, deviceOwner)
         
         return KioskPermissionStatus(
             isAccessibilityEnabled = accessibility,
             isUsageStatsEnabled = usageStats,
-            isDeviceAdminEnabled = false, // Device admin removed
+            isDeviceAdminEnabled = isDeviceAdminEnabled(),
+            isDeviceOwner = deviceOwner,
             isDefaultLauncher = launcher,
             overallProtectionLevel = level
         )
@@ -68,15 +73,24 @@ class KioskPermissionManager @Inject constructor(
     private fun calculateProtectionLevel(
         accessibility: Boolean,
         usageStats: Boolean,
-        launcher: Boolean
+        launcher: Boolean,
+        deviceOwner: Boolean
     ): ProtectionLevel {
         if (!launcher) return ProtectionLevel.NONE
         
         return when {
-            accessibility && usageStats -> ProtectionLevel.MAXIMUM // All 3 permissions = maximum
+            deviceOwner && accessibility && usageStats -> ProtectionLevel.MAXIMUM
+            accessibility && usageStats -> ProtectionLevel.HIGH
             accessibility || usageStats -> ProtectionLevel.MEDIUM
             else -> ProtectionLevel.BASIC
         }
+    }
+    
+    /**
+     * Check if the app is Device Owner
+     */
+    fun isDeviceOwner(): Boolean {
+        return KioskManager.isDeviceOwner(context)
     }
     
     /**

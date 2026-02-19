@@ -41,9 +41,13 @@ class NewsViewModel @Inject constructor(
 
     private fun loadNews() {
         viewModelScope.launch {
-            newsRepository.getAllNews().collect { news ->
-                _newsState.value = news
-            }
+            newsRepository.getAllNews()
+                .map { newsList ->
+                    newsList.sortedByDescending { it.timestamp }
+                }
+                .collect { news ->
+                    _newsState.value = news
+                }
         }
     }
 

@@ -19,12 +19,35 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImagePainter
 import coil.compose.rememberAsyncImagePainter
+import coil.request.ErrorResult
 import coil.request.ImageRequest
+import coil.request.SuccessResult
 import coil.size.Precision
 import coil.size.Scale
 import coil.size.Size
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
+import java.io.File
+import com.google.gson.JsonObject
+
+// Функция логирования для режима отладки
+private fun logDebug(hypothesisId: String, message: String, data: Map<String, Any?> = emptyMap()) {
+    try {
+        val logFile = File("d:\\AndroidProject\\.cursor\\debug.log")
+        val entry = JsonObject().apply {
+            addProperty("sessionId", "debug-session")
+            addProperty("runId", "run-compilation-fix")
+            addProperty("hypothesisId", hypothesisId)
+            addProperty("location", "CoilImage.kt")
+            addProperty("message", message)
+            addProperty("timestamp", System.currentTimeMillis())
+            val dataObj = JsonObject()
+            data.forEach { (k, v) -> dataObj.addProperty(k, v?.toString()) }
+            add("data", dataObj)
+        }.toString()
+        logFile.appendText(entry + "\n")
+    } catch (e: Exception) {}
+}
 
 /**
  * A reusable composable for loading and displaying images with Coil.
@@ -56,6 +79,7 @@ fun CoilImage(
 
     var attempt by remember(imageUrl) { mutableStateOf(0) }
     var lastError: Throwable? by remember { mutableStateOf(null) }
+    var progress by remember(imageUrl, attempt) { mutableFloatStateOf(0f) }
 
     fun retry() {
         // Bump attempt to rebuild the request and restart loading.
@@ -88,28 +112,39 @@ fun CoilImage(
     }
 
     val model = remember(imageUrl, attempt, context, targetSize) {
+        logDebug("H1/H2", "Creating ImageRequest", mapOf("imageUrl" to imageUrl, "attempt" to attempt))
         ImageRequest.Builder(context)
             .data(imageUrl)
-            // Request a capped size to balance clarity and GPU load.
             .size(targetSize)
             .precision(Precision.INEXACT)
             .scale(if (contentScale == ContentScale.Crop) Scale.FILL else Scale.FIT)
             .crossfade(true)
-            .allowHardware(false) // avoid GPU bitmap pressure on weaker devices
+            .allowHardware(false)
+            .listener(
+                onStart = { request ->
+                    logDebug("H2", "Loading started", mapOf("url" to request.data.toString()))
+                    progress = 0f
+                },
+                onSuccess = { request, _ ->
+                    logDebug("H2", "Loading success", mapOf("url" to request.data.toString()))
+                    progress = 1f
+                },
+                onError = { request, result ->
+                    logDebug("H2", "Loading error", mapOf("url" to request.data.toString(), "error" to result.throwable.message))
+                }
+            )
             .build()
     }
 
     val painter = rememberAsyncImagePainter(
-        model = model,
-        placeholder = fallbackPainter,
-        error = fallbackPainter
+        model = model
     )
 
-    // Auto-retry with exponential backoff until success or max attempts reached.
-    LaunchedEffect(painter.state, attempt, autoRetry, maxAutoRetries) {
-        if (!autoRetry) return@LaunchedEffect
-        if (painter.state is AsyncImagePainter.State.Error && attempt < maxAutoRetries) {
-            val backoffMs = (1 shl attempt).coerceAtMost(32) * 500L // 0.5s, 1s, 2s, 4s, 8s, 16s
+    // Auto-retry with exponential backoff indefinitely.
+    LaunchedEffect(painter.state, attempt) {
+        if (painter.state is AsyncImagePainter.State.Error) {
+            val backoffMs = (1L shl (attempt.coerceAtMost(6))).toInt() * 1000L
+            logDebug("H4", "Retrying after error", mapOf("attempt" to attempt, "backoffMs" to backoffMs))
             delay(backoffMs)
             retry()
         }
@@ -133,37 +168,28 @@ fun CoilImage(
 
         when (painter.state) {
             is AsyncImagePainter.State.Loading -> {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(22.dp),
-                    strokeWidth = 2.dp
-                )
+                if (progress > 0f) {
+                    CircularProgressIndicator(
+                        progress = progress,
+                        modifier = Modifier.size(36.dp),
+                        strokeWidth = 3.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                } else {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(36.dp),
+                        strokeWidth = 3.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
             is AsyncImagePainter.State.Error -> {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.padding(8.dp)
-                ) {
-                    Text(
-                        text = "Не удалось загрузить изображение",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    OutlinedButton(
-                        onClick = { retry() },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Text(text = "Повторить")
-                    }
-                    lastError?.message?.takeIf { it.isNotBlank() }?.let { msg ->
-                        Text(
-                            text = msg,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2
-                        )
-                    }
-                }
+                // Keep showing progress during infinite retry cycle
+                CircularProgressIndicator(
+                    modifier = Modifier.size(36.dp),
+                    strokeWidth = 3.dp,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+                )
             }
             else -> Unit
         }
