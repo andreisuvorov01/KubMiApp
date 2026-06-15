@@ -9,6 +9,7 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -17,6 +18,8 @@ import android.widget.TextView
 import androidx.core.app.NotificationCompat
 
 class OverlayService : Service() {
+
+    private val tag = "OverlayService"
 
     private var mWindowManager: WindowManager? = null
     private var mOverlayView: View? = null
@@ -49,7 +52,11 @@ class OverlayService : Service() {
             .setContentIntent(pendingIntent)
             .build()
 
-        startForeground(NOTIFICATION_ID, notification)
+        try {
+            startForeground(NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            Log.e(tag, "Unable to promote overlay service to foreground; continuing without foreground notification", e)
+        }
 
         // Inflate the overlay layout
         val inflater = getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater

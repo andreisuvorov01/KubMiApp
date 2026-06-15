@@ -23,13 +23,21 @@ import android.util.Log
 import java.util.UUID
 import java.util.Locale
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatterBuilder
+import java.time.format.DateTimeParseException
+import java.time.temporal.ChronoField
 import java.net.URI
+import java.io.IOException
 import kotlinx.coroutines.delay
 import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val GO_CHS_URL = "https://kubmi.ru/institut/go-i-chs/"
+private const val NEWS_URL = "https://kubmi.ru/novosti/"
+private const val STUDENT_SCHEDULE_URL = "https://kubmi.ru/raspisanie-zanyatij-studentov/"
+private const val TEACHER_SCHEDULE_URL = "https://kubmi.ru/raspisanie-zanyatij-prepodavatelej/"
 
 @Singleton
 class WebScraper @Inject constructor() {
@@ -78,15 +86,18 @@ class WebScraper @Inject constructor() {
     }
 
     private suspend fun fetchDoc(url: String): org.jsoup.nodes.Document {
+        require(url.isNotBlank()) { "Schedule/news URL is blank" }
         return Jsoup.connect(url)
             .followRedirects(true)
+            .ignoreContentType(true)
             .timeout(30000)
             .maxBodySize(0)
             .referrer("https://kubmi.ru/")
             .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
             .header("Accept-Language", "ru-RU,ru;q=0.9,en-US;q=0.7,en;q=0.6")
             .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-            .get()
+            .execute()
+            .parse()
     }
 
     private suspend fun fetchInstituteHistoryDoc(): org.jsoup.nodes.Document = fetchDoc(INSTITUTE_HISTORY_URL)
@@ -142,18 +153,30 @@ class WebScraper @Inject constructor() {
         return weeklySchedules
     }
     
+    suspend fun fetchStudentScheduleIndexPage(): org.jsoup.nodes.Document = fetchDocWithRetry(STUDENT_SCHEDULE_URL)
+
+    suspend fun fetchTeacherScheduleIndexPage(): org.jsoup.nodes.Document = fetchDocWithRetry(TEACHER_SCHEDULE_URL)
+
     suspend fun scrapeStudentScheduleByUrl(groupTitle: String, url: String): List<WeeklyScheduleData> {
-        val doc = fetchDoc(url)
+        if (url.isBlank()) {
+            Timber.w("Student schedule URL is blank for group %s", groupTitle)
+            return emptyList()
+        }
+        val doc = fetchDocWithRetry(url)
         return parseWeeklyScheduleData(doc)
     }
 
     suspend fun scrapeTeacherScheduleByUrl(teacherTitle: String, url: String): List<WeeklyScheduleData> {
-        val doc = fetchDoc(url)
+        if (url.isBlank()) {
+            Timber.w("Teacher schedule URL is blank for teacher %s", teacherTitle)
+            return emptyList()
+        }
+        val doc = fetchDocWithRetry(url)
         return parseWeeklyScheduleData(doc)
     }
 
     suspend fun parseGroupEntriesFromPage(doc: org.jsoup.nodes.Document): List<ScheduleIndexEntry> {
-        val links = doc.select("figure.wp-block-table table a[href]").ifEmpty {
+        val links = doc.select("main table a[href], article table a[href], .entry-content table a[href], figure.wp-block-table table a[href]").ifEmpty {
             doc.select("table a[href]")
         }
         return links.mapNotNull { link ->
@@ -176,7 +199,7 @@ class WebScraper @Inject constructor() {
     }
 
     suspend fun parseTeacherEntriesFromPage(doc: org.jsoup.nodes.Document): List<ScheduleIndexEntry> {
-        val links = doc.select("figure.wp-block-table table a[href]").ifEmpty {
+        val links = doc.select("main table a[href], article table a[href], .entry-content table a[href], figure.wp-block-table table a[href]").ifEmpty {
             doc.select("table a[href]")
         }
         return links.mapNotNull { link ->
@@ -191,7 +214,7 @@ class WebScraper @Inject constructor() {
     }
 
     suspend fun parseStudentGroupsTableFromPage(doc: org.jsoup.nodes.Document): com.example.kubmi.domain.model.StudentGroupsTable {
-        val candidates = doc.select("figure.wp-block-table table, table")
+        val candidates = doc.select("main table, article table, .entry-content table, figure.wp-block-table table, table")
         val table = candidates.firstOrNull { t ->
             val firstRow = t.selectFirst("tr") ?: return@firstOrNull false
             val headers = firstRow.select("th, td").map { it.text() }
@@ -238,20 +261,79 @@ class WebScraper @Inject constructor() {
     @RequiresApi(Build.VERSION_CODES.O)
     suspend fun scrapeNews(): List<News> {
         return try {
-            val doc = Jsoup.connect("https://kubmi.ru/stranicza-dlya-panelej/")
-                .timeout(15000)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .get()
-            val eaelSelector = "div.eael-post-block-grid.eael-post-appender.eael-post-appender-53969f8 article"
-            val eaelArticles = doc.select(eaelSelector)
-            val newsElements = if (eaelArticles.isNotEmpty()) eaelArticles else {
-                val newsContainer = doc.select(newsSelector).first()
-                newsContainer?.select(newsItemSelector) ?: emptyList()
+            Timber.i("Scraping news list from %s", NEWS_URL)
+            val doc = fetchDocWithRetry(NEWS_URL)
+            val newsElements = selectNewsElements(doc)
+            val parsed = newsElements
+                .asSequence()
+                .mapNotNull { parseNewsElement(it) }
+                .distinctBy { it.id.ifBlank { it.title.lowercase(Locale.ROOT) } }
+                .sortedWith(compareByDescending<News> { parseNewsDateMillis(it.date) ?: 0L }.thenBy { it.title })
+                .toList()
+
+            if (parsed.isEmpty()) {
+                Timber.w("No news items parsed from %s; page structure may have changed", NEWS_URL)
+            } else {
+                Timber.i("Parsed %d news items from %s", parsed.size, NEWS_URL)
             }
-            newsElements.asSequence().mapNotNull { parseNewsElement(it) }.toList()
+            parsed
         } catch (e: Exception) {
-            Timber.e(e, "Failed to scrape news")
+            Timber.e(e, "Failed to scrape news from %s", NEWS_URL)
             emptyList()
+        }
+    }
+
+    private suspend fun fetchDocWithRetry(url: String, attempts: Int = 3): org.jsoup.nodes.Document {
+        var lastError: Exception? = null
+        repeat(attempts) { attempt ->
+            try {
+                Timber.d("HTTP GET %s (attempt %d/%d)", url, attempt + 1, attempts)
+                return fetchDoc(url)
+            } catch (e: Exception) {
+                lastError = e
+                Timber.w(e, "HTTP GET failed for %s (attempt %d/%d)", url, attempt + 1, attempts)
+                if (attempt < attempts - 1) delay(750L * (attempt + 1))
+            }
+        }
+        throw lastError ?: IOException("Failed to fetch $url")
+    }
+
+    private fun selectNewsElements(doc: org.jsoup.nodes.Document): List<Element> {
+        val selectors = listOf(
+            "article.elementor-post",
+            ".elementor-posts-container article",
+            ".eael-post-grid article, .eael-post-block article, .eael-grid-post",
+            "article.type-post",
+            "article",
+            ".post, .news-item"
+        )
+        return selectors.asSequence()
+            .map { doc.select(it) }
+            .firstOrNull { it.isNotEmpty() }
+            ?.filter { it.selectFirst("a[href]") != null && it.text().isNotBlank() }
+            ?: emptyList()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun parseNewsDateMillis(date: String): Long? {
+        val cleaned = normalizeSpaces(date).lowercase(Locale.ROOT)
+            .replace("года", "")
+            .replace("г.", "")
+            .trim()
+        val ruMonths = mapOf(
+            "января" to "01", "февраля" to "02", "марта" to "03", "апреля" to "04",
+            "мая" to "05", "июня" to "06", "июля" to "07", "августа" to "08",
+            "сентября" to "09", "октября" to "10", "ноября" to "11", "декабря" to "12"
+        )
+        val normalized = ruMonths.entries.fold(cleaned) { acc, (month, number) -> acc.replace(month, number) }
+        val candidates = Regex("""\d{1,2}[.\-/\s]\d{1,2}[.\-/\s]\d{4}""").find(normalized)?.value ?: normalized
+        val formatters = listOf("d.M.yyyy", "dd.MM.yyyy", "d M yyyy", "d-M-yyyy", "yyyy-MM-dd").map {
+            DateTimeFormatterBuilder().appendPattern(it).parseDefaulting(ChronoField.HOUR_OF_DAY, 0).toFormatter(Locale("ru"))
+        }
+        return formatters.firstNotNullOfOrNull { formatter ->
+            try {
+                LocalDate.parse(candidates, formatter).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            } catch (_: DateTimeParseException) { null }
         }
     }
 
@@ -338,8 +420,10 @@ class WebScraper @Inject constructor() {
     }
 
     private fun parseNewsElement(element: Element): News? {
-        val titleLink = element.selectFirst(".eael-entry-title a[href], p.eael-entry-title a[href], p a[href], $titleSelector")
-        val title = titleLink?.text()?.trim().orEmpty()
+        val titleLink = element.selectFirst(".elementor-post__title a[href], .entry-title a[href], .eael-entry-title a[href], p.eael-entry-title a[href], h1 a[href], h2 a[href], h3 a[href], a[href]")
+        val title = normalizeSpaces(titleLink?.text().orEmpty()).ifBlank {
+            normalizeSpaces(element.selectFirst(".elementor-post__title, .entry-title, .eael-entry-title, h1, h2, h3")?.text().orEmpty())
+        }
         if (title.isBlank()) return null
 
         val url = titleLink?.absUrl("href").orEmpty()
@@ -385,8 +469,10 @@ class WebScraper @Inject constructor() {
                 ?: pickFromSrcSet(img.attr("srcset"))
         }
 
-        val description = element.selectFirst(".eael-entry-content p, .eael-grid-post-excerpt p, .eael-post-excerpt, .excerpt")?.text()?.trim().orEmpty()
-        val date = element.selectFirst("time")?.text()?.trim() ?: LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+        val description = normalizeSpaces(element.selectFirst(".elementor-post__excerpt, .eael-entry-content p, .eael-grid-post-excerpt p, .eael-post-excerpt, .entry-summary, .excerpt, p")?.text().orEmpty())
+        val dateElement = element.selectFirst("time[datetime], time, .elementor-post-date, .elementor-post__meta-data, .posted-on, .entry-date, .date, .eael-entry-meta, .eael-post-meta")
+        val date = normalizeSpaces(dateElement?.attr("datetime")?.takeIf { it.isNotBlank() } ?: dateElement?.text().orEmpty())
+            .ifBlank { LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy")) }
         val imageUrl = element.selectFirst(imgSelector)?.let { previewImage(it) }
 
         return News(
@@ -401,7 +487,7 @@ class WebScraper @Inject constructor() {
 
     suspend fun scrapeStudentSchedule(group: String = ""): List<WeeklyScheduleData> {
         return try {
-            val doc = Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-studentov-panel/").timeout(15000).get()
+            val doc = fetchDocWithRetry(STUDENT_SCHEDULE_URL)
             if (group.isNotEmpty()) {
                 val groupUrl = findGroupUrl(doc, group)
                 if (groupUrl != null) return getScheduleFromGroupPage(groupUrl, group)
@@ -421,13 +507,13 @@ class WebScraper @Inject constructor() {
     
     private suspend fun findGroupUrl(doc: org.jsoup.nodes.Document, group: String): String? {
         val targetKey = normalizeGroupKey(group)
-        val links = doc.select("figure.wp-block-table table a[href]").ifEmpty { doc.select("table a[href]") }
+        val links = doc.select("main table a[href], article table a[href], .entry-content table a[href], figure.wp-block-table table a[href]").ifEmpty { doc.select("table a[href]") }
         return links.firstOrNull { normalizeGroupKey(it.text()) == targetKey }?.absUrl("href")
     }
     
     private suspend fun getScheduleFromGroupPage(url: String, group: String): List<WeeklyScheduleData> {
         return try {
-            val doc = Jsoup.connect(url).timeout(15000).get()
+            val doc = fetchDocWithRetry(url)
             val scheduleItems = mutableListOf<WeeklyScheduleData>()
             fun parseTables(fromDoc: org.jsoup.nodes.Document) {
                 fromDoc.select("table").forEach { table ->
@@ -446,7 +532,7 @@ class WebScraper @Inject constructor() {
             parseTables(doc)
             if (scheduleItems.isEmpty()) {
                 collectRaspisanieLinks(doc).filter { it != url }.forEach { nestedUrl ->
-                    parseTables(Jsoup.connect(nestedUrl).timeout(15000).get())
+                    parseTables(fetchDocWithRetry(nestedUrl))
                     delay(250)
                 }
             }
@@ -456,7 +542,7 @@ class WebScraper @Inject constructor() {
 
     suspend fun scrapeTeacherSchedule(teacher: String = ""): List<WeeklyScheduleData> {
         return try {
-            val doc = Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-prepodavatelej-panel/").timeout(15000).get()
+            val doc = fetchDocWithRetry(TEACHER_SCHEDULE_URL)
             if (teacher.isNotEmpty()) {
                 findTeacherUrl(doc, teacher)?.let { return getScheduleFromTeacherPage(it, teacher) }
                 return emptyList()
@@ -475,13 +561,13 @@ class WebScraper @Inject constructor() {
     
     private suspend fun findTeacherUrl(doc: org.jsoup.nodes.Document, teacher: String): String? {
         val targetKey = normalizeTeacherKey(teacher)
-        val links = doc.select("figure.wp-block-table table a[href]").ifEmpty { doc.select("table a[href]") }
+        val links = doc.select("main table a[href], article table a[href], .entry-content table a[href], figure.wp-block-table table a[href]").ifEmpty { doc.select("table a[href]") }
         return links.firstOrNull { normalizeTeacherKey(it.text()) == targetKey }?.absUrl("href")
     }
     
     private suspend fun getScheduleFromTeacherPage(url: String, teacher: String): List<WeeklyScheduleData> {
         return try {
-            val doc = Jsoup.connect(url).timeout(15000).get()
+            val doc = fetchDocWithRetry(url)
             val scheduleItems = mutableListOf<WeeklyScheduleData>()
             fun parseTables(fromDoc: org.jsoup.nodes.Document) {
                 fromDoc.select("table").forEach { table ->
@@ -500,7 +586,7 @@ class WebScraper @Inject constructor() {
             parseTables(doc)
             if (scheduleItems.isEmpty()) {
                 collectRaspisanieLinks(doc).filter { it != url }.forEach { nestedUrl ->
-                    parseTables(Jsoup.connect(nestedUrl).timeout(15000).get())
+                    parseTables(fetchDocWithRetry(nestedUrl))
                     delay(250)
                 }
             }
@@ -538,12 +624,12 @@ class WebScraper @Inject constructor() {
     }
 
     suspend fun parseGroupsFromPage(doc: org.jsoup.nodes.Document): List<String> {
-        val links = doc.select("figure.wp-block-table table a[href]").ifEmpty { doc.select("table a[href]") }
+        val links = doc.select("main table a[href], article table a[href], .entry-content table a[href], figure.wp-block-table table a[href]").ifEmpty { doc.select("table a[href]") }
         return links.map { normalizeSpaces(it.text()) }.filter { it.isNotBlank() }.distinct()
     }
 
     suspend fun parseTeachersFromPage(doc: org.jsoup.nodes.Document): List<String> {
-        val links = doc.select("figure.wp-block-table table a[href]").ifEmpty { doc.select("table a[href]") }
+        val links = doc.select("main table a[href], article table a[href], .entry-content table a[href], figure.wp-block-table table a[href]").ifEmpty { doc.select("table a[href]") }
         return links.map { normalizeTeacherDisplay(it.text()) }.filter { it.isNotBlank() }.distinct()
     }
 

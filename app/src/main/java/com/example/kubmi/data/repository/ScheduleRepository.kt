@@ -7,14 +7,10 @@ import com.example.kubmi.domain.model.ScheduleIndexEntry
 import com.example.kubmi.domain.model.StudentGroupsTable
 import com.example.kubmi.domain.model.WeeklyScheduleData // Updated import
 import com.example.kubmi.domain.repository.ScheduleRepository as DomainScheduleRepository
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import timber.log.Timber
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.io.File
 import javax.inject.Inject
 
 class ScheduleRepositoryImpl @Inject constructor(
@@ -37,13 +33,18 @@ class ScheduleRepositoryImpl @Inject constructor(
                 }
             }
 
+            if (url.isBlank()) {
+                Log.w("KubMI_Repo", "Student schedule URL is blank for $groupTitle; returning cached/empty data")
+                return@withContext emptyList()
+            }
+
             val schedule = webScraper.scrapeStudentScheduleByUrl(groupTitle, url)
             Log.i("KubMI_Repo", "Parsed ${schedule.size} weekly schedules for group $groupTitle")
 
             if (schedule.isEmpty()) {
                 Log.w("KubMI_Repo", "No weekly schedules found for group $groupTitle")
                 return@withContext emptyList()
-        }
+            }
             parserCache.writeSchedule(ownerType = "group", ownerTitle = groupTitle, data = schedule)
             // Removed database operations (deleteScheduleByGroup, insertAll) for detailed schedules
             schedule
@@ -62,6 +63,11 @@ class ScheduleRepositoryImpl @Inject constructor(
                     Log.i("KubMI_Repo", "Serving teacher schedule from cache: ${cached.size} weekly blocks")
                     return@withContext cached
                 }
+            }
+
+            if (url.isBlank()) {
+                Log.w("KubMI_Repo", "Teacher schedule URL is blank for $teacherTitle; returning cached/empty data")
+                return@withContext emptyList()
             }
 
             val schedule = webScraper.scrapeTeacherScheduleByUrl(teacherTitle, url)
@@ -91,11 +97,8 @@ class ScheduleRepositoryImpl @Inject constructor(
                 }
             }
 
-            Log.i("KubMI_Repo", "Connecting to kubmi.ru/raspisanie-zanyatij-studentov-panel/")
-            val doc = org.jsoup.Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-studentov-panel/")
-                .timeout(15000)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .get()
+            Log.i("KubMI_Repo", "Connecting to kubmi.ru/raspisanie-zanyatij-studentov/")
+            val doc = webScraper.fetchStudentScheduleIndexPage()
             
             val table = webScraper.parseStudentGroupsTableFromPage(doc)
             val nonEmpty = table.rows.sumOf { r -> r.count { it != null } }
@@ -125,10 +128,7 @@ class ScheduleRepositoryImpl @Inject constructor(
                 }
             }
 
-            val doc = org.jsoup.Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-studentov-panel/")
-                .timeout(15000)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .get()
+            val doc = webScraper.fetchStudentScheduleIndexPage()
             
             val groups = webScraper.parseGroupEntriesFromPage(doc)
             
@@ -160,11 +160,8 @@ class ScheduleRepositoryImpl @Inject constructor(
                 }
             }
 
-            Log.i("KubMI_Repo", "Connecting to kubmi.ru/raspisanie-zanyatij-prepodavatelej-panel/")
-            val doc = org.jsoup.Jsoup.connect("https://kubmi.ru/raspisanie-zanyatij-prepodavatelej-panel/")
-                .timeout(15000)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .get()
+            Log.i("KubMI_Repo", "Connecting to kubmi.ru/raspisanie-zanyatij-prepodavatelej/")
+            val doc = webScraper.fetchTeacherScheduleIndexPage()
             // #region agent log
             Log.d("KubMI_Debug", "[A] getAllTeachers: Page fetched successfully, HTML length=${doc.html().length}")
             // #endregion

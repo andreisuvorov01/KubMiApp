@@ -30,6 +30,7 @@ fun TeacherScheduleScreen(
     }
     
     val teachers by viewModel.teachersState.collectAsState()
+    val selectableTeachers = remember(teachers) { teachers.filter { it.url.isNotBlank() }.distinctBy { it.url } }
 
     Scaffold(
         topBar = {
@@ -74,13 +75,23 @@ fun TeacherScheduleScreen(
             ) {
                 item {
                     Text(
-                        text = stringResource(R.string.total_teachers, teachers.size),
+                        text = stringResource(R.string.total_teachers, selectableTeachers.size),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onBackground
                     )
                 }
                 
-                items(teachers) { teacher ->
+                if (selectableTeachers.isEmpty()) {
+                    item {
+                        Text(
+                            text = stringResource(R.string.no_schedule_found),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                }
+
+                items(selectableTeachers) { teacher ->
                     Card(
                         onClick = { navController.navigate(Screen.ScheduleDetail.createRoute("teacher", teacher.title, teacher.url)) },
                         modifier = Modifier.fillMaxWidth(),

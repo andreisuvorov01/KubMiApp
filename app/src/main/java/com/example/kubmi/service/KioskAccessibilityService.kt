@@ -120,26 +120,42 @@ class KioskAccessibilityService : AccessibilityService() {
             return super.onKeyEvent(event)
         }
         
-        // Block HOME, BACK and APP_SWITCH (RECENTS) keys
-        return when (event.keyCode) {
-            KeyEvent.KEYCODE_HOME,
-            KeyEvent.KEYCODE_BACK,
-            KeyEvent.KEYCODE_APP_SWITCH,
-            KeyEvent.KEYCODE_ASSIST,
-            KeyEvent.KEYCODE_VOICE_ASSIST,
-            KeyEvent.KEYCODE_SEARCH -> {
-                // #region agent log
-                com.example.kubmi.util.DebugLogger.log("B", "KioskAccessibilityService:onKeyEvent", "Blocking key", mapOf("keyCode" to event.keyCode))
-                // #endregion
-                // Block these keys by returning true (consumed)
-                true
-            }
-            else -> super.onKeyEvent(event)
+        if (shouldBlockKeyEvent(event)) {
+            com.example.kubmi.util.DebugLogger.log(
+                "B",
+                "KioskAccessibilityService:onKeyEvent",
+                "Blocking key or shortcut",
+                mapOf("keyCode" to event.keyCode, "metaState" to event.metaState)
+            )
+            return true
         }
+        return super.onKeyEvent(event)
     }
 
     override fun onInterrupt() {
         // Required override
+    }
+
+    private fun shouldBlockKeyEvent(event: KeyEvent): Boolean {
+        val ctrl = event.isCtrlPressed
+        val alt = event.isAltPressed
+        val shift = event.isShiftPressed
+        val meta = event.isMetaPressed
+        return when (event.keyCode) {
+            KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_APP_SWITCH,
+            KeyEvent.KEYCODE_ASSIST, KeyEvent.KEYCODE_VOICE_ASSIST, KeyEvent.KEYCODE_SEARCH,
+            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_SETTINGS, KeyEvent.KEYCODE_ESCAPE,
+            KeyEvent.KEYCODE_F4, KeyEvent.KEYCODE_F11, KeyEvent.KEYCODE_F12,
+            KeyEvent.KEYCODE_SYSRQ, KeyEvent.KEYCODE_WINDOW -> true
+            KeyEvent.KEYCODE_DPAD_LEFT -> alt
+            KeyEvent.KEYCODE_TAB -> alt || meta
+            KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_FORWARD -> alt
+            KeyEvent.KEYCODE_W, KeyEvent.KEYCODE_L, KeyEvent.KEYCODE_N, KeyEvent.KEYCODE_T,
+            KeyEvent.KEYCODE_R, KeyEvent.KEYCODE_P, KeyEvent.KEYCODE_O, KeyEvent.KEYCODE_U -> ctrl
+            KeyEvent.KEYCODE_I, KeyEvent.KEYCODE_J -> ctrl && shift
+            KeyEvent.KEYCODE_D, KeyEvent.KEYCODE_M -> meta
+            else -> false
+        }
     }
 
     private fun isAllowedPackage(packageName: String): Boolean {
