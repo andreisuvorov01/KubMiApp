@@ -13,6 +13,7 @@ import android.provider.Settings
 import android.util.Log
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
@@ -112,6 +113,7 @@ class MainActivity : ComponentActivity() {
             )
         )
 
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         setContent {
             KubMiTheme {
                 val showLauncherPrompt = rememberSaveable { mutableStateOf(shouldShowLauncherHelp()) }
@@ -200,7 +202,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_DOWN && isBlockedKey(event.keyCode)) return true
+        if (event.action == KeyEvent.ACTION_DOWN && isBlockedKeyEvent(event)) {
+            Log.w(TAG, "Blocked kiosk key event: keyCode=${event.keyCode}, meta=${event.metaState}")
+            return true
+        }
         return super.dispatchKeyEvent(event)
     }
 
@@ -234,19 +239,44 @@ class MainActivity : ComponentActivity() {
             KioskManager.enableKioskMode(this)
             Log.d(TAG, "#D(run2|A) Window focus gained, KioskMode enabled.")
         } else {
-            Log.d(TAG, "#D(run2|A) Window focus lost.")
+            Log.w(TAG, "Window focus lost in kiosk mode; scheduling foreground return")
+            scheduleReturnIfNeeded()
         }
     }
 
-    private fun isBlockedKey(keyCode: Int): Boolean {
+    override fun onStop() {
+        super.onStop()
+        scheduleReturnIfNeeded()
+        KioskService.start(this)
+    }
+
+    private fun isBlockedKey(keyCode: Int): Boolean = isBlockedKeyCode(keyCode)
+
+    private fun isBlockedKeyEvent(event: KeyEvent): Boolean {
+        if (isBlockedKeyCode(event.keyCode)) return true
+        val ctrl = event.isCtrlPressed
+        val alt = event.isAltPressed
+        val shift = event.isShiftPressed
+        val meta = event.isMetaPressed
+        return when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT -> alt
+            KeyEvent.KEYCODE_TAB -> alt || meta
+            KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_FORWARD -> alt
+            KeyEvent.KEYCODE_W, KeyEvent.KEYCODE_L, KeyEvent.KEYCODE_N, KeyEvent.KEYCODE_T,
+            KeyEvent.KEYCODE_R, KeyEvent.KEYCODE_P, KeyEvent.KEYCODE_O, KeyEvent.KEYCODE_U -> ctrl
+            KeyEvent.KEYCODE_I, KeyEvent.KEYCODE_J -> ctrl && shift
+            KeyEvent.KEYCODE_D, KeyEvent.KEYCODE_M -> meta
+            else -> false
+        }
+    }
+
+    private fun isBlockedKeyCode(keyCode: Int): Boolean {
         return when (keyCode) {
-            KeyEvent.KEYCODE_BACK,
-            KeyEvent.KEYCODE_HOME,
-            KeyEvent.KEYCODE_APP_SWITCH,
-            KeyEvent.KEYCODE_MENU,
-            KeyEvent.KEYCODE_SETTINGS,
-            KeyEvent.KEYCODE_ASSIST,
-            KeyEvent.KEYCODE_SEARCH -> true
+            KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_APP_SWITCH,
+            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_SETTINGS, KeyEvent.KEYCODE_ASSIST,
+            KeyEvent.KEYCODE_VOICE_ASSIST, KeyEvent.KEYCODE_SEARCH, KeyEvent.KEYCODE_ESCAPE,
+            KeyEvent.KEYCODE_F4, KeyEvent.KEYCODE_F11, KeyEvent.KEYCODE_F12,
+            KeyEvent.KEYCODE_SYSRQ, KeyEvent.KEYCODE_WINDOW -> true
             else -> false
         }
     }
