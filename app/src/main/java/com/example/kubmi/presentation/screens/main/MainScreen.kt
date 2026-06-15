@@ -84,33 +84,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.animateScrollBy
 
-// #region agent log helper
-private fun agentLog(
-    hypothesisId: String,
-    location: String,
-    message: String,
-    data: Map<String, Any?> = emptyMap(),
-    runId: String = "debug1"
-) {
-    try {
-        val payload = mapOf(
-            "sessionId" to "debug-session",
-            "runId" to runId,
-            "hypothesisId" to hypothesisId,
-            "location" to location,
-            "message" to message,
-            "data" to data,
-            "timestamp" to System.currentTimeMillis()
-        )
-        File("d:\\AndroidProject\\.cursor\\debug.log").appendText(
-            JSONObject(payload).toString() + "\n"
-        )
-    } catch (_: Exception) {
-        // logging must not crash UI
-    }
-}
-// #endregion
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(navController: NavController) {
@@ -118,21 +91,8 @@ fun MainScreen(navController: NavController) {
     val news by viewModel.news.collectAsState()
     val refreshState by viewModel.refreshState.collectAsState()
 
-    agentLog(
-        hypothesisId = "H1",
-        location = "MainScreen",
-        message = "Compose start",
-        data = mapOf("newsCount" to news.size)
-    )
-
     // Trigger initial load so the main screen isn't stuck showing "loading" forever on a fresh install.
     LaunchedEffect(Unit) {
-        agentLog(
-            hypothesisId = "H1",
-            location = "MainScreen:LaunchedEffect",
-            message = "Initial refreshNews",
-            data = mapOf("refreshState" to refreshState::class.java.simpleName)
-        )
         viewModel.refreshNews()
     }
 
@@ -142,29 +102,8 @@ fun MainScreen(navController: NavController) {
                 title = {
                     Text(
                         text = stringResource(R.string.app_name),
-                        style = MaterialTheme.typography.headlineMedium,
-                        modifier = Modifier.pointerInput(Unit) {
-                            detectTapGestures {
-                                agentLog(
-                                    hypothesisId = "H2",
-                                    location = "MainScreen:TopAppBarTitle",
-                                    message = "Title tapped",
-                                    data = mapOf(
-                                        "newsCount" to news.size,
-                                        "refreshState" to refreshState::class.java.simpleName
-                                    )
-                                )
-                            }
-                        }
+                        style = MaterialTheme.typography.headlineMedium
                     )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.refreshNews() }) {
