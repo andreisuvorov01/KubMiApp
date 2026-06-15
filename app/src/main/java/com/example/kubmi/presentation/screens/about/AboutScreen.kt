@@ -79,7 +79,7 @@ fun AboutScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.about_university)) },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.back)

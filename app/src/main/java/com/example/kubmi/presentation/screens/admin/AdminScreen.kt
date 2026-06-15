@@ -6,7 +6,7 @@ import android.content.Intent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,7 +42,7 @@ fun AdminScreen(navController: NavController) {
                     viewModel.setPassword(password)
                     password = ""
                 },
-                onBack = { navController.popBackStack() }
+                onBack = { navController.navigateUp() }
             )
         }
         
@@ -55,7 +55,7 @@ fun AdminScreen(navController: NavController) {
                     viewModel.authenticate(password)
                     password = ""
                 },
-                onBack = { navController.popBackStack() },
+                onBack = { navController.navigateUp() },
                 errorMessage = state.errorMessage
             )
         }
@@ -85,7 +85,7 @@ private fun SetPasswordScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
-                            imageVector = Icons.Default.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.back)
                         )
                     }
@@ -152,7 +152,7 @@ private fun LoginScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
-                            imageVector = Icons.Default.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.back)
                         )
                     }
@@ -248,9 +248,9 @@ fun AdminMainScreen(navController: NavController) {
             TopAppBar(
                 title = { Text(stringResource(R.string.admin_panel)) },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
-                            imageVector = Icons.Default.ArrowBack,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.close)
                         )
                     }

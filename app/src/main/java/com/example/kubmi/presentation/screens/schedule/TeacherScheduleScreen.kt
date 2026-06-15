@@ -37,7 +37,7 @@ fun TeacherScheduleScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.select_teacher)) },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.back)
