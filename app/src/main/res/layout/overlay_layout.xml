@@ -2,16 +2,6 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:padding="16dp"
-    android:background="#80000000"> <!-- Semi-transparent black background -->
-
-    <TextView
-        android:id="@+id/overlay_text_view"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="This is an overlay"
-        android:textColor="#FFFFFF"
-        android:textSize="24sp" />
+    android:orientation="vertical">
 
 </LinearLayout>
