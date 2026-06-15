@@ -47,7 +47,6 @@ class OverlayService : Service() {
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Overlay Service Running")
-            .setContentText("Your overlay is active.")
             .setSmallIcon(R.mipmap.ic_launcher) // Use your app's launcher icon
             .setContentIntent(pendingIntent)
             .build()
@@ -84,10 +83,6 @@ class OverlayService : Service() {
 
         mWindowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         mWindowManager?.addView(mOverlayView, params)
-
-        // Example: Update text in the overlay
-        val overlayTextView = mOverlayView?.findViewById<TextView>(R.id.overlay_text_view)
-        overlayTextView?.text = "Overlay Active"
     }
 
     private fun createNotificationChannel() {
