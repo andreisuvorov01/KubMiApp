@@ -23,13 +23,19 @@ import android.util.Log
 import java.util.UUID
 import java.util.Locale
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeFormatterBuilder
+import java.time.format.DateTimeParseException
+import java.time.temporal.ChronoField
 import java.net.URI
+import java.io.IOException
 import kotlinx.coroutines.delay
 import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val GO_CHS_URL = "https://kubmi.ru/institut/go-i-chs/"
+private const val NEWS_URL = "https://kubmi.ru/novosti/"
 
 @Singleton
 class WebScraper @Inject constructor() {
@@ -238,20 +244,79 @@ class WebScraper @Inject constructor() {
     @RequiresApi(Build.VERSION_CODES.O)
     suspend fun scrapeNews(): List<News> {
         return try {
-            val doc = Jsoup.connect("https://kubmi.ru/stranicza-dlya-panelej/")
-                .timeout(15000)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .get()
-            val eaelSelector = "div.eael-post-block-grid.eael-post-appender.eael-post-appender-53969f8 article"
-            val eaelArticles = doc.select(eaelSelector)
-            val newsElements = if (eaelArticles.isNotEmpty()) eaelArticles else {
-                val newsContainer = doc.select(newsSelector).first()
-                newsContainer?.select(newsItemSelector) ?: emptyList()
+            Timber.i("Scraping news list from %s", NEWS_URL)
+            val doc = fetchDocWithRetry(NEWS_URL)
+            val newsElements = selectNewsElements(doc)
+            val parsed = newsElements
+                .asSequence()
+                .mapNotNull { parseNewsElement(it) }
+                .distinctBy { it.id.ifBlank { it.title.lowercase(Locale.ROOT) } }
+                .sortedWith(compareByDescending<News> { parseNewsDateMillis(it.date) ?: 0L }.thenBy { it.title })
+                .toList()
+
+            if (parsed.isEmpty()) {
+                Timber.w("No news items parsed from %s; page structure may have changed", NEWS_URL)
+            } else {
+                Timber.i("Parsed %d news items from %s", parsed.size, NEWS_URL)
             }
-            newsElements.asSequence().mapNotNull { parseNewsElement(it) }.toList()
+            parsed
         } catch (e: Exception) {
-            Timber.e(e, "Failed to scrape news")
+            Timber.e(e, "Failed to scrape news from %s", NEWS_URL)
             emptyList()
+        }
+    }
+
+    private suspend fun fetchDocWithRetry(url: String, attempts: Int = 3): org.jsoup.nodes.Document {
+        var lastError: Exception? = null
+        repeat(attempts) { attempt ->
+            try {
+                Timber.d("HTTP GET %s (attempt %d/%d)", url, attempt + 1, attempts)
+                return fetchDoc(url)
+            } catch (e: Exception) {
+                lastError = e
+                Timber.w(e, "HTTP GET failed for %s (attempt %d/%d)", url, attempt + 1, attempts)
+                if (attempt < attempts - 1) delay(750L * (attempt + 1))
+            }
+        }
+        throw lastError ?: IOException("Failed to fetch $url")
+    }
+
+    private fun selectNewsElements(doc: org.jsoup.nodes.Document): List<Element> {
+        val selectors = listOf(
+            "article.elementor-post",
+            ".elementor-posts-container article",
+            ".eael-post-grid article, .eael-post-block article, .eael-grid-post",
+            "article.type-post",
+            "article",
+            ".post, .news-item"
+        )
+        return selectors.asSequence()
+            .map { doc.select(it) }
+            .firstOrNull { it.isNotEmpty() }
+            ?.filter { it.selectFirst("a[href]") != null && it.text().isNotBlank() }
+            ?: emptyList()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun parseNewsDateMillis(date: String): Long? {
+        val cleaned = normalizeSpaces(date).lowercase(Locale.ROOT)
+            .replace("года", "")
+            .replace("г.", "")
+            .trim()
+        val ruMonths = mapOf(
+            "января" to "01", "февраля" to "02", "марта" to "03", "апреля" to "04",
+            "мая" to "05", "июня" to "06", "июля" to "07", "августа" to "08",
+            "сентября" to "09", "октября" to "10", "ноября" to "11", "декабря" to "12"
+        )
+        val normalized = ruMonths.entries.fold(cleaned) { acc, (month, number) -> acc.replace(month, number) }
+        val candidates = Regex("""\d{1,2}[.\-/\s]\d{1,2}[.\-/\s]\d{4}""").find(normalized)?.value ?: normalized
+        val formatters = listOf("d.M.yyyy", "dd.MM.yyyy", "d M yyyy", "d-M-yyyy", "yyyy-MM-dd").map {
+            DateTimeFormatterBuilder().appendPattern(it).parseDefaulting(ChronoField.HOUR_OF_DAY, 0).toFormatter(Locale("ru"))
+        }
+        return formatters.firstNotNullOfOrNull { formatter ->
+            try {
+                LocalDate.parse(candidates, formatter).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            } catch (_: DateTimeParseException) { null }
         }
     }
 
@@ -338,8 +403,10 @@ class WebScraper @Inject constructor() {
     }
 
     private fun parseNewsElement(element: Element): News? {
-        val titleLink = element.selectFirst(".eael-entry-title a[href], p.eael-entry-title a[href], p a[href], $titleSelector")
-        val title = titleLink?.text()?.trim().orEmpty()
+        val titleLink = element.selectFirst(".elementor-post__title a[href], .entry-title a[href], .eael-entry-title a[href], p.eael-entry-title a[href], h1 a[href], h2 a[href], h3 a[href], a[href]")
+        val title = normalizeSpaces(titleLink?.text().orEmpty()).ifBlank {
+            normalizeSpaces(element.selectFirst(".elementor-post__title, .entry-title, .eael-entry-title, h1, h2, h3")?.text().orEmpty())
+        }
         if (title.isBlank()) return null
 
         val url = titleLink?.absUrl("href").orEmpty()
@@ -385,8 +452,10 @@ class WebScraper @Inject constructor() {
                 ?: pickFromSrcSet(img.attr("srcset"))
         }
 
-        val description = element.selectFirst(".eael-entry-content p, .eael-grid-post-excerpt p, .eael-post-excerpt, .excerpt")?.text()?.trim().orEmpty()
-        val date = element.selectFirst("time")?.text()?.trim() ?: LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+        val description = normalizeSpaces(element.selectFirst(".elementor-post__excerpt, .eael-entry-content p, .eael-grid-post-excerpt p, .eael-post-excerpt, .entry-summary, .excerpt, p")?.text().orEmpty())
+        val dateElement = element.selectFirst("time[datetime], time, .elementor-post-date, .elementor-post__meta-data, .posted-on, .entry-date, .date, .eael-entry-meta, .eael-post-meta")
+        val date = normalizeSpaces(dateElement?.attr("datetime")?.takeIf { it.isNotBlank() } ?: dateElement?.text().orEmpty())
+            .ifBlank { LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy")) }
         val imageUrl = element.selectFirst(imgSelector)?.let { previewImage(it) }
 
         return News(
