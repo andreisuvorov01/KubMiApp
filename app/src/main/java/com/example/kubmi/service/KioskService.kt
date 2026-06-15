@@ -262,8 +262,14 @@ class KioskService : Service() {
         const val ADMIN_EXIT_WINDOW_MS = 120_000L
 
         fun start(context: Context) {
-            val intent = Intent(context, KioskService::class.java)
-            ContextCompat.startForegroundService(context, intent)
+            try {
+                val intent = Intent(context, KioskService::class.java)
+                ContextCompat.startForegroundService(context, intent)
+            } catch (e: Exception) {
+                // On Android 12+, starting foreground services from background is restricted.
+                // We log it and rely on the activity starting it when it comes to foreground.
+                android.util.Log.e("KioskService", "Failed to start KioskService: ${e.message}")
+            }
         }
     }
 }

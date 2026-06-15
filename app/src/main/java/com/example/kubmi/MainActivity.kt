@@ -67,31 +67,6 @@ class MainActivity : ComponentActivity() {
         private const val SCREENSAVER_DELAY_MS = 1 * 60 * 1000L // 1 minute for testing
     }
 
-    // #region agent log
-    private fun agentLog(
-        hypothesisId: String,
-        location: String,
-        message: String,
-        data: Map<String, Any?> = emptyMap(),
-        runId: String = "run1"
-    ) {
-        try {
-            val payload = mapOf(
-                "sessionId" to "debug-session",
-                "runId" to runId,
-                "hypothesisId" to hypothesisId,
-                "location" to location,
-                "message" to message,
-                "data" to data,
-                "timestamp" to System.currentTimeMillis()
-            )
-            val json = JSONObject(payload).toString()
-            Log.d("DEBUG_LOG", json)
-        } catch (_: Exception) {
-        }
-    }
-    // #endregion
-
     @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalAnimationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -102,16 +77,6 @@ class MainActivity : ComponentActivity() {
         startOverlayServiceIfAllowed() // Call this here to start the service if permission is already granted
 
         Log.d(TAG, "#D(run2|F) onCreate called. showScreensaver: $showScreensaver")
-        agentLog(
-            hypothesisId = "H3",
-            location = "MainActivity:onCreate",
-            message = "Activity created",
-            data = mapOf(
-                "showScreensaver" to showScreensaver,
-                "hasOverlayPermission" to (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)),
-                "isEmulator" to Build.FINGERPRINT.contains("generic")
-            )
-        )
 
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         setContent {
@@ -247,7 +212,6 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         scheduleReturnIfNeeded()
-        KioskService.start(this)
     }
 
     private fun isBlockedKey(keyCode: Int): Boolean = isBlockedKeyCode(keyCode)
@@ -315,7 +279,8 @@ class MainActivity : ComponentActivity() {
     private fun scheduleReturnIfNeeded() {
         if (isTemporaryExitAllowed()) return
         returnHandler.removeCallbacksAndMessages(null)
-        returnHandler.postDelayed({ bringAppToForeground() }, 600)
+        // Wait longer before forcing return to foreground to avoid restart loops
+        returnHandler.postDelayed({ bringAppToForeground() }, 2000)
         Log.d(TAG, "#D(run2|G) scheduleReturnIfNeeded called. isTemporaryExitAllowed: ${isTemporaryExitAllowed()}")
     }
 
@@ -346,7 +311,9 @@ class MainActivity : ComponentActivity() {
 
     private fun isTvDevice(): Boolean {
         val uiModeManager = getSystemService(UI_MODE_SERVICE) as UiModeManager
-        return uiModeManager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+        return uiModeManager.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
+                packageManager.hasSystemFeature("android.software.leanback") ||
+                packageManager.hasSystemFeature("android.hardware.type.television")
     }
 
     private fun checkOverlayPermission() {
@@ -372,18 +339,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun markScreensaverShown() {
-        agentLog(
-            hypothesisId = "H4",
-            location = "MainActivity:screensaver",
-            message = "Screensaver state changed",
-            data = mapOf("showScreensaver" to showScreensaver)
-        )
-    }
-
     private fun updateScreensaverState(newValue: Boolean) {
         showScreensaver = newValue
-        markScreensaverShown()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
