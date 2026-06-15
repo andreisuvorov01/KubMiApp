@@ -88,6 +88,7 @@ dependencies {
     implementation(libs.jsoup)
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("com.jcraft:jsch:0.1.55")
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)

@@ -125,4 +125,23 @@
     <string name="disable">Отключить</string>
     
     <string name="accessibility_service_description">Служба режима киоска для блокировки кнопок HOME и переключения между приложениями. Позволяет удерживать приложение на переднем плане.</string>
+    
+    <!-- Screensaver Settings -->
+    <string name="screensaver_settings_title">Настройки экранной заставки</string>
+    <string name="screensaver_mode_label">Источник изображений для заставки:</string>
+    <string name="screensaver_mode_news">Новости с сайта</string>
+    <string name="screensaver_mode_news_desc">Использовать PDF из раздела "ЧС" на сайте института</string>
+    <string name="screensaver_mode_sftp">Сервер SFTP</string>
+    <string name="screensaver_mode_sftp_desc">Загружать изображения с удалённого сервера через SFTP</string>
+    <string name="show_upload_instructions">Показать инструкцию по загрузке файлов</string>
+    <string name="hide_instructions">Скрыть инструкцию</string>
+    
+    <string name="sftp_upload_instructions_title">Как загрузить файлы на SFTP сервер:</string>
+    <string name="sftp_server_info">Сервер: 46.254.17.172\nПользователь: root\nПароль: eS8h882JP9\nПапка: /pdf</string>
+    
+    <string name="sftp_instructions_windows">Windows: Используйте WinSCP или FileZilla.\n1. Откройте программу\n2. Введите данные сервера\n3. Подключитесь и загрузите PDF файлы в папку /pdf</string>
+    
+    <string name="sftp_instructions_macos_linux">macOS/Linux: Используйте команду в терминале:\nsftp root@46.254.17.172\nПосле входа: cd /pdf, затем: put вашфайл.pdf</string>
+    
+    <string name="sftp_instructions_note">Примечание: Приложение автоматически конвертирует PDF файлы в изображения для показа в заставке. Загружайте только PDF файлы.</string>
 </resources>

@@ -4,7 +4,9 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -242,13 +244,15 @@ fun AdminMainScreen(navController: NavController) {
     var exitPassword by remember { mutableStateOf("") }
     var exitError by remember { mutableStateOf(false) }
     var exitSuccess by remember { mutableStateOf(false) }
+    var screensaverMode by remember { mutableStateOf(securePrefs.getScreensaverMode()) }
+    var showInstructions by remember { mutableStateOf(false) }
     
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.admin_panel)) },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
                             imageVector = Icons.Default.ArrowBack,
                             contentDescription = stringResource(R.string.close)
@@ -267,7 +271,8 @@ fun AdminMainScreen(navController: NavController) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Kiosk Settings Button - most important
@@ -279,6 +284,150 @@ fun AdminMainScreen(navController: NavController) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(stringResource(R.string.kiosk_settings_title))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            // Screensaver Settings Section
+            Text(
+                text = stringResource(R.string.screensaver_settings_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.screensaver_mode_label),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    
+                    // News mode radio button
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = screensaverMode == "news",
+                            onClick = {
+                                screensaverMode = "news"
+                                securePrefs.saveScreensaverMode("news")
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = stringResource(R.string.screensaver_mode_news),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = stringResource(R.string.screensaver_mode_news_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    
+                    // SFTP mode radio button
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = screensaverMode == "sftp",
+                            onClick = {
+                                screensaverMode = "sftp"
+                                securePrefs.saveScreensaverMode("sftp")
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = stringResource(R.string.screensaver_mode_sftp),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = stringResource(R.string.screensaver_mode_sftp_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Show instructions button
+                    TextButton(
+                        onClick = { showInstructions = !showInstructions },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (showInstructions) 
+                                stringResource(R.string.hide_instructions) 
+                            else 
+                                stringResource(R.string.show_upload_instructions)
+                        )
+                    }
+                    
+                    // Instructions card (collapsible)
+                    if (showInstructions) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.sftp_upload_instructions_title),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                
+                                Text(
+                                    text = stringResource(R.string.sftp_server_info),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                )
+                                
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                                
+                                Text(
+                                    text = stringResource(R.string.sftp_instructions_windows),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                
+                                Text(
+                                    text = stringResource(R.string.sftp_instructions_macos_linux),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                
+                                Text(
+                                    text = stringResource(R.string.sftp_instructions_note),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))

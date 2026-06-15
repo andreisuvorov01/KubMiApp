@@ -1,11 +1,15 @@
 package com.example.kubmi.presentation.screens.news
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.util.Log
+import com.example.kubmi.data.remote.SftpDownloader
 import com.example.kubmi.domain.repository.NewsRepository
 import com.example.kubmi.domain.model.News
+import com.example.kubmi.util.SecurePreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,12 +21,17 @@ import javax.inject.Inject
 
 @HiltViewModel
 class NewsViewModel @Inject constructor(
-    private val newsRepository: NewsRepository
+    private val newsRepository: NewsRepository,
+    private val sftpDownloader: SftpDownloader,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _newsState = MutableStateFlow<List<News>>(emptyList())
     val newsState: StateFlow<List<News>> = _newsState.asStateFlow()
 
+    private val _sftpSlidesState = MutableStateFlow<List<String>>(emptyList())
+    val sftpSlidesState: StateFlow<List<String>> = _sftpSlidesState.asStateFlow()
+    
     val pdfSlidesState: Flow<List<News>> = newsRepository.getPdfSlides()
 
     private val _isLoading = MutableStateFlow(false)
@@ -37,6 +46,7 @@ class NewsViewModel @Inject constructor(
     init {
         loadNews()
         refreshNews()
+        loadSftpSlidesIfNeeded()
     }
 
     private fun loadNews() {
@@ -89,4 +99,26 @@ class NewsViewModel @Inject constructor(
     }
 
     suspend fun getNewsById(id: String): News? = newsRepository.getNewsById(id)
+    
+    private fun loadSftpSlidesIfNeeded() {
+        val securePrefs = SecurePreferences(context)
+        val mode = securePrefs.getScreensaverMode()
+        
+        if (mode == "sftp") {
+            viewModelScope.launch {
+                try {
+                    val pdfFiles = sftpDownloader.downloadPdfFiles()
+                    val imageUrls = pdfFiles.map { "file://${it.absolutePath}" }
+                    _sftpSlidesState.value = imageUrls
+                    Log.d("KubMI_NewsVM", "Loaded ${imageUrls.size} images from SFTP")
+                } catch (e: Exception) {
+                    Log.e("KubMI_NewsVM", "Error loading SFTP slides", e)
+                }
+            }
+        }
+    }
+    
+    fun refreshSftpSlides() {
+        loadSftpSlidesIfNeeded()
+    }
 }

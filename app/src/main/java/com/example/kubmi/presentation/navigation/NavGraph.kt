@@ -30,6 +30,9 @@ import com.example.kubmi.presentation.screens.schedule.ScheduleDetailScreen
 import com.example.kubmi.presentation.screens.schedule.StudentScheduleScreen
 import com.example.kubmi.presentation.screens.schedule.TeacherScheduleScreen
 import com.example.kubmi.util.KioskPermissionManager
+import com.example.kubmi.kiosk.AdvancedKioskManager
+import com.example.kubmi.util.SecurePreferences
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.accompanist.navigation.animation.AnimatedNavHost
 import com.google.accompanist.navigation.animation.composable
 
@@ -152,8 +155,10 @@ fun NavGraph(navController: NavHostController) {
             popExitTransition = popExit
         ) {
             val context = LocalContext.current
-            val permissionManager = KioskPermissionManager(context)
-            KioskSettingsScreen(navController, permissionManager)
+            val permissionManager = remember { KioskPermissionManager(context) }
+            val kioskManager = remember { AdvancedKioskManager(context) }
+            val securePreferences = remember { SecurePreferences(context) }
+            KioskSettingsScreen(navController, permissionManager, kioskManager, securePreferences)
         }
     }
 }

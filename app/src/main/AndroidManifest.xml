@@ -2,18 +2,31 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Разрешения для Kiosk и Device Owner функциональности -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.REORDER_TASKS" />
     <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.SCHEDULE_NORMAL_AFTER_BOOT" />
+    
+    <!-- Разрешения для мониторинга приложений и Device Owner -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.GET_TASKS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.REAL_GET_TASKS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    
+    <!-- Device Owner специфичные разрешения -->
+    <uses-permission android:name="android.permission.MANAGE_DEVICE_ADMINS"
         tools:ignore="ProtectedPermissions" />
 
     <uses-feature
@@ -94,6 +107,11 @@
             android:foregroundServiceType="dataSync" />
 
         <service
+            android:name=".kiosk.AppMonitorService"
+            android:enabled="true"
+            android:exported="false" />
+
+        <service
             android:name=".OverlayService"
             android:enabled="true"
             android:exported="false"
@@ -114,6 +132,14 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+
+        <!-- JobService для Android 12+ (S и выше) -->
+        <!-- Обеспечивает периодические проверки приложения Kiosk -->
+        <service
+            android:name=".service.KioskJobService"
+            android:enabled="true"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
         <!-- Disable default WorkManagerInitializer since KubMiApplication implements Configuration.Provider -->
         <provider

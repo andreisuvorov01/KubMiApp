@@ -37,9 +37,9 @@ fun NewsScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.institute_news)) },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
-                            imageVector = androidx.compose.material.icons.Icons.Default.ArrowBack,
+                            imageVector = Icons.Default.ArrowBack,
                             contentDescription = stringResource(R.string.back)
                         )
                     }

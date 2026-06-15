@@ -41,24 +41,32 @@ import com.example.kubmi.presentation.navigation.NavGraph
 import com.example.kubmi.presentation.screens.news.NewsViewModel
 import com.example.kubmi.service.KioskService
 import com.example.kubmi.ui.theme.KubMiTheme
+import com.example.kubmi.kiosk.AdvancedKioskManager
+import com.example.kubmi.kiosk.KeyEventBlocker
 import com.example.kubmi.util.KioskManager
+import com.example.kubmi.util.SecurePreferences
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import java.io.File
 import org.json.JSONObject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    
+    @Inject
+    lateinit var advancedKioskManager: AdvancedKioskManager
+    
     private val launcherPrefs by lazy { getSharedPreferences("launcher_prefs", MODE_PRIVATE) }
     private val kioskPrefs by lazy { getSharedPreferences(KioskService.PREF_KIOSK_GUARD, MODE_PRIVATE) }
     private val returnHandler = Handler(Looper.getMainLooper())
 
     // Screensaver related variables
     private val screensaverHandler = Handler(Looper.getMainLooper())
+    private val showScreensaver = mutableStateOf(false)
     private val screensaverRunnable = Runnable {
-        updateScreensaverState(true)
-        Log.d(TAG, "#D(run2|B) screensaverRunnable executed, showScreensaver is now: $showScreensaver")
+        showScreensaver.value = true
+        Log.d(TAG, "#D(run2|B) screensaverRunnable executed, showScreensaver is now: ${showScreensaver.value}")
     }
-    private var showScreensaver by mutableStateOf(false) // State for screensaver visibility
 
     companion object {
         private const val TAG = "MainActivity"
@@ -70,13 +78,21 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalAnimationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Setup advanced kiosk mode
+        advancedKioskManager.setupFullKioskMode()
+        if (advancedKioskManager.isDeviceOwner()) {
+            advancedKioskManager.startLockTask(this)
+            Log.d(TAG, "Device Owner mode - Lock Task started")
+        }
+        
         KioskManager.enableKioskMode(this)
         KioskService.start(this)
 
         checkOverlayPermission()
         startOverlayServiceIfAllowed() // Call this here to start the service if permission is already granted
 
-        Log.d(TAG, "#D(run2|F) onCreate called. showScreensaver: $showScreensaver")
+        Log.d(TAG, "#D(run2|F) onCreate called. showScreensaver: ${showScreensaver.value}")
 
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         setContent {
@@ -87,9 +103,17 @@ class MainActivity : ComponentActivity() {
                     val newsViewModel: NewsViewModel = hiltViewModel()
                     val newsList by newsViewModel.newsState.collectAsState()
                     val pdfSlides by newsViewModel.pdfSlidesState.collectAsState(initial = emptyList())
+                    val sftpSlides by newsViewModel.sftpSlidesState.collectAsState()
                     
-                    val screensaverImages = remember(pdfSlides) {
-                        pdfSlides.mapNotNull { it.imageUrl }.distinct()
+                    val securePrefs = remember { SecurePreferences(this@MainActivity) }
+                    val screensaverMode = remember { securePrefs.getScreensaverMode() }
+                    
+                    val screensaverImages = remember(pdfSlides, sftpSlides, screensaverMode) {
+                        if (screensaverMode == "sftp") {
+                            sftpSlides
+                        } else {
+                            pdfSlides.mapNotNull { it.imageUrl }.distinct()
+                        }
                     }
                     Box(modifier = Modifier.fillMaxSize()) {
                         NavGraph(navController = navController)
@@ -109,7 +133,7 @@ class MainActivity : ComponentActivity() {
                         }
 
                         // Display screensaver if active
-                        if (showScreensaver) {
+                        if (showScreensaver.value) {
                             ScreensaverContent(imageUrls = screensaverImages)
                         }
                     }
@@ -122,20 +146,20 @@ class MainActivity : ComponentActivity() {
     private fun resetScreensaverTimer() {
         screensaverHandler.removeCallbacks(screensaverRunnable)
         screensaverHandler.postDelayed(screensaverRunnable, SCREENSAVER_DELAY_MS)
-        if (showScreensaver) { // Check value directly as it's a MutableState property
-            updateScreensaverState(false) // Hide screensaver if it's active
-            Log.d(TAG, "#D(run2|E) Screensaver timer reset. Delay: $SCREENSAVER_DELAY_MS ms, showScreensaver: $showScreensaver")
+        if (showScreensaver.value) {
+            showScreensaver.value = false
+            Log.d(TAG, "#D(run2|E) Screensaver timer reset. Delay: $SCREENSAVER_DELAY_MS ms, showScreensaver: ${showScreensaver.value}")
         } else {
-            Log.d(TAG, "#D(run2|E) Screensaver timer reset. Delay: $SCREENSAVER_DELAY_MS ms, showScreensaver (was already false): $showScreensaver")
+            Log.d(TAG, "#D(run2|E) Screensaver timer reset. Delay: $SCREENSAVER_DELAY_MS ms, showScreensaver (was already false): ${showScreensaver.value}")
         }
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
-        if (showScreensaver) {
-            updateScreensaverState(false)
+        if (showScreensaver.value) {
+            showScreensaver.value = false
             resetScreensaverTimer()
             Log.d(TAG, "#D(run2|H) Touch consumed to dismiss screensaver.")
-            return true // consume the first tap so UI beneath is not triggered
+            return true
         }
         resetScreensaverTimer()
         Log.d(TAG, "#D(run2|A) dispatchTouchEvent called, screensaver timer reset.")
@@ -167,6 +191,13 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Use advanced key blocker
+        if (event.action == KeyEvent.ACTION_DOWN && KeyEventBlocker.shouldBlockKey(event)) {
+            Log.w(TAG, "Blocked key event: keyCode=${event.keyCode}, meta=${event.metaState}")
+            return true
+        }
+        
+        // Legacy blocker for backward compatibility
         if (event.action == KeyEvent.ACTION_DOWN && isBlockedKeyEvent(event)) {
             Log.w(TAG, "Blocked kiosk key event: keyCode=${event.keyCode}, meta=${event.metaState}")
             return true
@@ -339,9 +370,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun updateScreensaverState(newValue: Boolean) {
-        showScreensaver = newValue
-    }
+
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)

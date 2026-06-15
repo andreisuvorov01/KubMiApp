@@ -59,7 +59,7 @@ fun NewsDetailScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.news_details)) },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
                             imageVector = Icons.Default.ArrowBack,
                             contentDescription = stringResource(R.string.back)

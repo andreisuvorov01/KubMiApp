@@ -114,7 +114,7 @@ fun MainScreen(navController: NavController) {
                     }
                     IconButton(onClick = { navController.navigate(Screen.Admin.route) }) {
                         Icon(
-                            imageVector = androidx.compose.material.icons.Icons.Default.Settings,
+                            imageVector = Icons.Default.Settings,
                             contentDescription = stringResource(R.string.admin_panel)
                         )
                     }
@@ -122,7 +122,6 @@ fun MainScreen(navController: NavController) {
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    navigationIconContentColor = MaterialTheme.colorScheme.primary,
                     actionIconContentColor = MaterialTheme.colorScheme.primary
                 )
             )

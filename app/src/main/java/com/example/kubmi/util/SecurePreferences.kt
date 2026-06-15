@@ -69,6 +69,24 @@ class SecurePreferences @Inject constructor(@ApplicationContext private val cont
         preferences.edit().remove("admin_password").apply()
     }
     
+    // Screensaver mode settings
+    fun saveScreensaverMode(mode: String) {
+        preferences.edit().putString("screensaver_mode", mode).apply()
+    }
+    
+    fun getScreensaverMode(): String {
+        return preferences.getString("screensaver_mode", "news") ?: "news"
+    }
+    
+    // Screensaver delay settings (in seconds)
+    fun saveScreensaverDelay(delaySeconds: Int) {
+        preferences.edit().putInt("screensaver_delay", delaySeconds).apply()
+    }
+    
+    fun getScreensaverDelay(): Int {
+        return preferences.getInt("screensaver_delay", 300) // Default 5 minutes
+    }
+    
     private fun getOrCreateSecretKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
         keyStore.load(null)
@@ -124,7 +142,27 @@ class SecurePreferences @Inject constructor(@ApplicationContext private val cont
         val spec = GCMParameterSpec(TAG_LENGTH, iv)
         cipher.init(Cipher.DECRYPT_MODE, secretKey, spec)
         
+        
         val decryptedBytes = cipher.doFinal(encryptedBytes)
         return String(decryptedBytes, Charsets.UTF_8)
     }
+}
+
+// Available screensaver delay options (in seconds)
+object ScreensaverDelays {
+    const val DELAY_1_MIN = 60
+    const val DELAY_2_MIN = 120
+    const val DELAY_5_MIN = 300
+    const val DELAY_10_MIN = 600
+    const val DELAY_15_MIN = 900
+    const val DELAY_30_MIN = 1800
+    
+    val DELAY_OPTIONS = listOf(
+        60 to "1 minute",
+        120 to "2 minutes",
+        300 to "5 minutes",
+        600 to "10 minutes",
+        900 to "15 minutes",
+        1800 to "30 minutes"
+    )
 }
