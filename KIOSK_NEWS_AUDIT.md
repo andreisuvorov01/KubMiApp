@@ -39,3 +39,9 @@
 - Accessibility key filtering depends on the user enabling the service and can vary by OEM keyboard/firmware.
 - Background activity launch restrictions on newer Android versions can delay recovery if the app loses foreground without HOME/default launcher and usage-access setup.
 - News scraping depends on the public WordPress/Elementor HTML structure at `https://kubmi.ru/novosti/`; parser selectors are intentionally broad, but a full site redesign may still require updates.
+
+## Schedule parsing update
+- Student index source: `https://kubmi.ru/raspisanie-zanyatij-studentov/`.
+- Teacher index source: `https://kubmi.ru/raspisanie-zanyatij-prepodavatelej/`.
+- Risks found during follow-up: old code still used `*-panel/` pages, schedule links could be empty in mock/fallback entries, and direct `Jsoup.connect(...).get()` calls had shorter timeouts and less robust content-type handling than the shared scraper fetcher.
+- Mitigation: schedule index pages now use the public URLs, detail fetches reject blank URLs safely, UI lists hide non-clickable blank fallback entries, and schedule detail pages use retrying fetches with redirect/content-type handling.

@@ -31,6 +31,7 @@ fun StudentScheduleScreen(
     }
     
     val groups by viewModel.groupsState.collectAsState()
+    val selectableGroups = remember(groups) { groups.rows.flatten().filterNotNull().filter { it.url.isNotBlank() }.distinctBy { it.url } }
 
     Scaffold(
         topBar = {
@@ -73,7 +74,17 @@ fun StudentScheduleScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(groups.rows.flatten().filterNotNull()) { group ->
+                if (selectableGroups.isEmpty()) {
+                    item {
+                        Text(
+                            text = stringResource(R.string.no_schedule_found),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                }
+
+                items(selectableGroups) { group ->
                     Card(
                         onClick = { navController.navigate(Screen.ScheduleDetail.createRoute("group", group.title, group.url)) },
                         modifier = Modifier.fillMaxWidth(),
