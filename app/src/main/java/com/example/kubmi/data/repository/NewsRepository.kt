@@ -128,7 +128,7 @@ class NewsRepositoryImpl @Inject constructor(
                                 }
 
                                 // Save regular news
-                                newsDao.insertAll(mergedRegular.map { it.toEntity().copy(timestamp = now) })
+                                newsDao.insertAll(mergedRegular.mapIndexed { index, item -> item.toEntity().copy(timestamp = now - index) })
                             }
                         }
 
