@@ -2,6 +2,7 @@ package com.example.kubmi
 
 import android.os.Bundle
 import android.view.KeyEvent
+import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,19 +36,41 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        KioskManager.enableKioskMode(this)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        KioskManager.restoreFocus(this)
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
+        if (KioskManager.isBlockedKey(event)) return true
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        return when (keyCode) {
-            KeyEvent.KEYCODE_BACK,
-            KeyEvent.KEYCODE_HOME,
-            KeyEvent.KEYCODE_APP_SWITCH -> true
-            else -> super.onKeyDown(keyCode, event)
-        }
+        if (KioskManager.isBlockedKey(event)) return true
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        if (KioskManager.handleTouchEvent(ev)) return true
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun onBackPressed() {
+        KioskManager.restoreFocus(this)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
             KioskManager.enableKioskMode(this)
+        } else {
+            KioskManager.restoreFocus(this)
         }
     }
 }

@@ -27,6 +27,113 @@ import javax.inject.Singleton
 
 @Singleton
 class WebScraper @Inject constructor() {
+    private companion object {
+        const val KUBMI_BASE_URL = "https://kubmi.ru"
+        const val NEWS_URL = "https://kubmi.ru/novosti/"
+        const val NETWORK_TIMEOUT_MS = 15_000
+        const val NETWORK_RETRY_COUNT = 3
+        const val RETRY_DELAY_MS = 1_000L
+        const val USER_AGENT = "Mozilla/5.0 (Linux; Android; KubMiApp kiosk) AppleWebKit/537.36"
+    }
+
+    private val newsArticleSelectors = listOf(
+        "article",
+        ".eael-grid-post",
+        ".eael-post-block-item",
+        ".elementor-post",
+        ".post",
+        ".news-item"
+    )
+    private val newsTitleSelectors = listOf(
+        ".entry-title a[href]",
+        ".eael-entry-title a[href]",
+        "h1 a[href]",
+        "h2 a[href]",
+        "h3 a[href]",
+        "a[rel=bookmark]",
+        "a[href]"
+    )
+    private val newsDescriptionSelectors = listOf(
+        ".entry-summary",
+        ".entry-content p",
+        ".eael-entry-content p",
+        ".eael-grid-post-excerpt p",
+        ".eael-post-excerpt",
+        ".post-excerpt",
+        ".excerpt",
+        "p"
+    )
+    private val newsDateSelectors = listOf(
+        "time[datetime]",
+        "time",
+        ".posted-on",
+        ".entry-date",
+        ".date",
+        ".eael-entry-meta",
+        ".eael-post-meta"
+    )
+
+    private suspend fun fetchDocWithRetry(url: String): org.jsoup.nodes.Document {
+        var lastError: Exception? = null
+        repeat(NETWORK_RETRY_COUNT) { attempt ->
+            try {
+                Timber.i("Fetching %s (attempt %d/%d)", url, attempt + 1, NETWORK_RETRY_COUNT)
+                return Jsoup.connect(url)
+                    .timeout(NETWORK_TIMEOUT_MS)
+                    .userAgent(USER_AGENT)
+                    .referrer(KUBMI_BASE_URL)
+                    .followRedirects(true)
+                    .ignoreHttpErrors(false)
+                    .get()
+            } catch (e: Exception) {
+                lastError = e
+                Timber.w(e, "Failed to fetch %s on attempt %d/%d", url, attempt + 1, NETWORK_RETRY_COUNT)
+                if (attempt < NETWORK_RETRY_COUNT - 1) delay(RETRY_DELAY_MS * (attempt + 1))
+            }
+        }
+        throw lastError ?: IllegalStateException("Failed to fetch $url")
+    }
+
+    private fun parseNewsDateToEpochMillis(rawDate: String): Long {
+        val normalized = normalizeSpaces(rawDate)
+        if (normalized.isBlank()) return 0L
+        val ruMonths = mapOf(
+            "января" to "01", "февраля" to "02", "марта" to "03", "апреля" to "04",
+            "мая" to "05", "июня" to "06", "июля" to "07", "августа" to "08",
+            "сентября" to "09", "октября" to "10", "ноября" to "11", "декабря" to "12"
+        )
+        val replaced = ruMonths.entries.fold(normalized.lowercase(Locale.ROOT)) { acc, (month, number) ->
+            acc.replace(month, number)
+        }
+        val candidates = listOf(normalized, replaced)
+        val patterns = listOf(
+            DateTimeFormatter.ISO_LOCAL_DATE,
+            DateTimeFormatter.ofPattern("dd.MM.yyyy"),
+            DateTimeFormatter.ofPattern("d.MM.yyyy"),
+            DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+            DateTimeFormatter.ofPattern("d/MM/yyyy"),
+            DateTimeFormatter.ofPattern("d MM yyyy"),
+            DateTimeFormatter.ofPattern("dd MM yyyy")
+        )
+        for (candidate in candidates) {
+            val dateToken = Regex("\\d{4}-\\d{2}-\\d{2}|\\d{1,2}[./]\\d{1,2}[./]\\d{4}|\\d{1,2}\\s+\\d{2}\\s+\\d{4}")
+                .find(candidate)?.value ?: candidate
+            for (pattern in patterns) {
+                runCatching { return LocalDate.parse(dateToken, pattern).toEpochDay() * 86_400_000L }
+            }
+        }
+        Timber.w("Unable to parse news date: %s", rawDate)
+        return 0L
+    }
+
+    private fun absoluteKubmiUrl(url: String): String = when {
+        url.isBlank() -> ""
+        url.startsWith("http://") || url.startsWith("https://") -> url
+        url.startsWith("//") -> "https:$url"
+        url.startsWith("/") -> "$KUBMI_BASE_URL$url"
+        else -> "$KUBMI_BASE_URL/$url"
+    }
+
 
     // Кэшируем часто используемые селекторы
     // News grid on the panel page is rendered by Essential Addons (EAEL):
@@ -73,12 +180,7 @@ class WebScraper @Inject constructor() {
             .distinct()
     }
 
-    private suspend fun fetchDoc(url: String): org.jsoup.nodes.Document {
-        return Jsoup.connect(url)
-            .timeout(15000)
-            .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-            .get()
-    }
+    private suspend fun fetchDoc(url: String): org.jsoup.nodes.Document = fetchDocWithRetry(url)
 
     private enum class OwnerKind { GROUP, TEACHER }
 
@@ -258,87 +360,74 @@ class WebScraper @Inject constructor() {
     }
 
     /**
-     * Scrapes news from the main panel page.
-     * Extracts news from element with ID "elementor-element-7d507b9"
-     *
-     * @return List of News items or empty list on error
+     * Scrapes current news from https://kubmi.ru/novosti/.
+     * The parser intentionally combines several WordPress/Elementor selectors so minor markup
+     * changes do not break kiosk data refreshes. Returns an empty list on fatal errors and lets
+     * the repository keep the previous Room cache for offline operation.
      */
     @RequiresApi(Build.VERSION_CODES.O)
     suspend fun scrapeNews(): List<News> {
         return try {
-            val doc = Jsoup.connect("https://kubmi.ru/stranicza-dlya-panelej/")
-                .timeout(15000)
-                .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-                .get()
-
-            // Prefer EAEL news grid (this is the block the user requested)
-            val eaelSelector = "div.eael-post-block-grid.eael-post-appender.eael-post-appender-02a6e68 article"
-            val eaelArticles = doc.select(eaelSelector)
-
-            val newsElements = if (eaelArticles.isNotEmpty()) {
-                Log.i("KubMI_Scraper", "scrapeNews(): using EAEL selector, articles=${eaelArticles.size}")
-                eaelArticles
-            } else {
-                // Fallback: previous container-based approach (best effort)
-                val newsContainer = doc.select(newsSelector).first()
-                Log.i(
-                    "KubMI_Scraper",
-                    "scrapeNews(): EAEL not found, containerFound=${newsContainer != null}, selector=$newsSelector"
-                )
-                val fallback = newsContainer?.select(newsItemSelector) ?: emptyList()
-                Log.i("KubMI_Scraper", "scrapeNews(): fallback found ${fallback.size} elements")
-                fallback
-            }
-
-            // Используем sequence для ленивых вычислений
-            val parsed = newsElements.asSequence()
-                .mapNotNull { element ->
-                    parseNewsElement(element)
-                }
+            val doc = fetchDocWithRetry(NEWS_URL)
+            val newsElements = newsArticleSelectors
+                .asSequence()
+                .flatMap { selector -> doc.select(selector).asSequence() }
+                .filter { it.select("a[href]").isNotEmpty() }
+                .distinctBy { it.cssSelector() }
                 .toList()
 
-            Log.i("KubMI_Scraper", "scrapeNews(): parsed ${parsed.size} news items")
-            parsed
+            if (newsElements.isEmpty()) {
+                Timber.w("scrapeNews(): no candidate news elements found at %s", NEWS_URL)
+            }
 
+            val parsed = newsElements
+                .mapNotNull { element -> parseNewsElement(element) }
+                .distinctBy { it.id }
+                .sortedByDescending { parseNewsDateToEpochMillis(it.date) }
+
+            Timber.i("scrapeNews(): parsed %d unique news items from %s", parsed.size, NEWS_URL)
+            parsed
         } catch (e: Exception) {
-            Timber.e(e, "Failed to scrape news from kubmi.ru/stranicza-dlya-panelej/")
+            Timber.e(e, "Failed to scrape news from %s", NEWS_URL)
             emptyList()
         }
     }
 
     private fun parseNewsElement(element: Element): News? {
-        // EAEL structure: <p class="eael-entry-title"><a ...>TITLE</a>
-        // Fallback: previous heuristics.
-        val titleLink = element.selectFirst(".eael-entry-title a[href], p.eael-entry-title a[href], p a[href], $titleSelector")
-        val title = titleLink?.text()?.trim().orEmpty()
+        val titleLink = newsTitleSelectors.asSequence()
+            .mapNotNull { selector -> element.selectFirst(selector) }
+            .firstOrNull { it.text().isNotBlank() && it.attr("href").isNotBlank() }
+            ?: return null
+
+        val title = normalizeSpaces(titleLink.text())
         if (title.isBlank()) return null
 
-        val url = titleLink?.absUrl("href").orEmpty()
+        val url = absoluteKubmiUrl(titleLink.absUrl("href").ifBlank { titleLink.attr("href") })
+        if (url.isBlank() || !url.contains("kubmi.ru")) return null
 
-        // Panel page structure: first <p> contains title link, second <p> contains excerpt, then <time>
-        val paragraphs = element.select("p")
-        val description = paragraphs.getOrNull(1)?.text()?.trim()
-            ?: element.selectFirst(".eael-entry-content p, .eael-grid-post-excerpt p, .eael-post-excerpt, .excerpt")?.text()?.trim()
+        val rawDateElement = newsDateSelectors.asSequence().mapNotNull { element.selectFirst(it) }.firstOrNull()
+        val rawDate = rawDateElement?.attr("datetime")?.takeIf { it.isNotBlank() }
+            ?: rawDateElement?.text()?.trim()
             ?: ""
+        val date = normalizeSpaces(rawDate).ifBlank { LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE) }
 
-        val date = element.selectFirst("time")?.text()?.trim()
-            ?: element.selectFirst(dateSelector)?.text()?.trim()
-            ?: LocalDate.now().format(DateTimeFormatter.ofPattern("dd.MM.yyyy"))
+        val description = newsDescriptionSelectors.asSequence()
+            .mapNotNull { selector -> element.selectFirst(selector)?.text() }
+            .map { normalizeSpaces(it) }
+            .firstOrNull { it.isNotBlank() && it != title && !it.contains(title) }
+            .orEmpty()
 
-        val imageUrl = element.selectFirst(imgSelector)?.absUrl("src")?.ifBlank { null }
-
-        // Use stable ID based on URL when available (prevents empty detail screen after refresh)
-        val id = if (url.isNotBlank()) url else UUID.randomUUID().toString()
-
-        val content = buildString {
-            if (description.isNotBlank()) append(description)
-            // keep full text for details as best-effort without fetching the article page
-            val extra = element.text().trim()
-            if (extra.isNotBlank() && extra != description && extra != title) {
-                if (isNotEmpty()) append("\n\n")
-                append(extra)
+        val imageUrl = element.select("img").asSequence()
+            .mapNotNull { img ->
+                listOf("data-src", "data-lazy-src", "src", "data-large_image").asSequence()
+                    .map { attr -> img.attr(attr) }
+                    .firstOrNull { it.isNotBlank() }
             }
-        }
+            .map { absoluteKubmiUrl(it) }
+            .firstOrNull { it.isNotBlank() }
+
+        val content = description.ifBlank { normalizeSpaces(element.text()).removePrefix(title).trim() }
+        val id = url
 
         return News(
             id = id,
