@@ -1,0 +1,7 @@
+ />
+<link rel="icon" href="https://kubmi.ru/wp-content/uploads/2024/11/logo-kmi-e1737978097274.png" sizes="192x192" />
+<link rel="apple-touch-icon" href="https://kubmi.ru/wp-content/uploads/2024/11/logo-kmi-e1737978097274.png" />
+<meta name="msapplication-TileImage" content="https://kubmi.ru/wp-content/uploads/2024/11/logo-kmi-e1737978097274.png" />
+<noscript><style id="rocket-lazyload-nojs-css">.rll-youtube-player, [data-lazy-src]{display:none !important;}</style></noscript><style id="wpr-lazyload-bg-container"></style><style id="wpr-lazyload-bg-exclusion"></style>
+<noscript>
+<style id="wpr-lazyload-bg-nostyle">.elementor-511 .elementor-element.elementor-element-2b768998:not(.elementor-motion-effects-element-type-background), .elementor-511 .elementor-element.elementor-element-2b768998 > .elementor-motion-effects-container > .elementor-motion-effects-layer{--wpr-bg-4e12aa30-ef1b-4d2d-8d0b-ab4b37804d1c: url('https://kubmi.ru/wp-content/uploads/2025/02/kubmi.webp');}.bvi-images.bvi-images-cog{--wpr-bg-3569c798-7d0b-464e-a6a4-34b0688c102b: url('https://kubmi.ru/wp-content/plugins/button-visually-impaired/assets/img/cog.svg');}.bvi-images.bvi-images-eye-slash{--wpr-bg-95b0def0-2d07-4b

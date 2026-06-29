@@ -1,0 +1,79 @@
+## Android / Gradle
+*.iml
+*.ipr
+*.iws
+
+.gradle/
+**/.gradle/
+build/
+**/build/
+app/build/
+app/release/
+
+local.properties
+**/local.properties
+
+## IDE
+.idea/
+**/.idea/
+*.swp
+.DS_Store
+Thumbs.db
+*.dS.stores
+
+.kotlin/
+**/.kotlin/
+
+## CI / Assistant
+.circleci/
+.codeassistant/
+.codeassistantmodes
+.continue/
+
+## Backup / docs
+backup/
+*.md
+!README.md
+
+## Build outputs
+captures/
+**/captures/
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+*.log
+
+## Native
+.externalNativeBuild/
+**/.externalNativeBuild/
+.cxx/
+**/.cxx/
+*.so
+*.o
+
+## Signing / secrets
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+**/google-services.json
+*.env
+**/secrets.properties
+**/signing.properties
+
+## Misc
+*.crash
+*.hprof
+*.pid
+*.ser
+*.orig
+*.patch
+*.tmp
+*~
+.DS_Store?
+*.swp
+*.swo
+*~

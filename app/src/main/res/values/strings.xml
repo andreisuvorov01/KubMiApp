@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Кубанский медицинский институт</string>
+    <string name="back">Назад</string>
+    <string name="refresh">Обновить</string>
+    <string name="settings">Настройки</string>
+    <string name="admin_panel">Админ-панель</string>
+    <string name="news">Новости</string>
+    <string name="institute_news">Новости об институте</string>
+    <string name="news_details">Детали новости</string>
+    <string name="about_institute">Об институте</string>
+    <string name="student_schedule">Расписание для студентов</string>
+    <string name="teacher_schedule">Расписание для преподавателей</string>
+    <string name="select_group">Выберите группу</string>
+    <string name="select_teacher">Выберите преподавателя</string>
+    <string name="total_groups">Всего групп: %1$d</string>
+    <string name="total_teachers">Всего преподавателей: %1$d</string>
+    <string name="loading_news">Загрузка новостей...</string>
+    <string name="loading">Загрузка...</string>
+    <string name="history">История</string>
+    <string name="management">Руководство</string>
+    <string name="faculties">Факультеты</string>
+    <string name="contacts">Контакты</string>
+    <string name="sections">Разделы</string>
+    <string name="institute_history">История института</string>
+    <string name="institute_history_description">Кубанский институт международного предпринимательства и менеджмента - ведущее образовательное учреждение региона.</string>
+    <string name="management_description">Информация о руководстве института</string>
+    <string name="faculties_and_departments">Факультеты и кафедры</string>
+    <string name="faculties_description">Информация о факультетах</string>
+    <string name="contact_information">Контактная информация</string>
+    <string name="address">Адрес: г. Краснодар</string>
+    <string name="phone">Телефон: +7 (861) XXX-XX-XX</string>
+    <string name="email">Email: info@kubmi.ru</string>
+    <string name="admin_set_password_title">Установка пароля администратора</string>
+    <string name="admin_enter_new_password">Введите новый пароль:</string>
+    <string name="set_password">Установить пароль</string>
+    <string name="admin_login_title">Вход в админ-панель</string>
+    <string name="admin_enter_password">Введите пароль:</string>
+    <string name="login">Войти</string>
+    <string name="cancel">Отмена</string>
+    <string name="close">Закрыть</string>
+    <string name="change_password">Изменить пароль</string>
+    <string name="update_settings">Настройки обновления</string>
+    <string name="clear_cache">Очистить кэш</string>
+    <string name="exit_app">Выход из приложения</string>
+    <string name="password">Пароль</string>
+    <string name="error">Ошибка</string>
+    <string name="news_image_desc">Изображение новости: %1$s</string>
+    <string name="news_image_description">Изображение новости: %1$s</string>
+    <string name="lecture">Лекция</string>
+    <string name="practice">Практика</string>
+    <string name="lab_work">Лаб. работа</string>
+    <string name="news_title">Новости</string>
+    <string name="about">Об институте</string>
+    <string name="audience">Аудитория</string>
+
+    <!-- Panel-style sections -->
+    <string name="select_schedule">Выберите расписание</string>
+    <string name="need_help">Нужна помощь?</string>
+    <string name="about_university">Об университете</string>
+    <string name="call">Позвонить</string>
+    <string name="write_email">Написать</string>
+    <string name="open_site">Открыть сайт</string>
+    <string name="open_video">Открыть видео</string>
+    <string name="video">Видео</string>
+    <string name="news_content_unavailable">Контент новости не удалось загрузить.</string>
+
+    <!-- Contact values (match kubmi.ru panel page) -->
+    <string name="panel_phone_value">+7 (861) 991-42-88</string>
+    <string name="panel_phone_tel">+78619914288</string>
+    <string name="panel_address_value">г. Краснодар, ул. Буденного, 198</string>
+    <string name="panel_address_value_2">г. Краснодар, ул. Гаражная, 77</string>
+    <string name="email_value">info@kubmi.ru</string>
+    <string name="contact_deanery">Деканат</string>
+    <string name="contact_deanery_phone">+7 (861) 991-22-88</string>
+    <string name="contact_education_department">Учебно-метод отдел</string>
+    <string name="contact_education_department_phone">+7 (861) 991-22-88</string>
+    <string name="contact_vice_dean">Зам. декана по ВР</string>
+    <string name="contact_vice_dean_phone">+7 (861) 991-42-88</string>
+    <string name="contact_accounting">Бухгалтерия</string>
+    <string name="contact_accounting_phone">+7 (861) 991-30-03</string>
+    <string name="no_schedule_found">Расписание не найдено</string>
+    <string name="search_groups">Поиск групп...</string>
+    <string name="search_teachers">Поиск преподавателей...</string>
+    <string name="clear">Очистить</string>
+    <string name="time">Время</string>
+    <string name="subject">Предмет</string>
+    <string name="type">Тип</string>
+    <string name="room">Кабинет</string>
+    <string name="teacher">Преподаватель</string>
+    <string name="group">Группа</string>
+    <string name="kiosk_service_channel_name">Киоск-режим</string>
+    <string name="kiosk_service_channel_desc">Возвращает приложение на экран и удерживает его активным</string>
+    <string name="kiosk_service_notification_title">Режим киоска активен</string>
+    <string name="kiosk_service_notification_body">Приложение автоматически удерживается на переднем плане</string>
+    <string name="launcher_help_title">Сделайте приложение лаунчером</string>
+    <string name="launcher_help_message">На системном экране выбора домашнего экрана выберите \"%1$s\" как лаунчер по умолчанию. Если диалог не появился, откройте настройки главного экрана и выберите приложение вручную.</string>
+    <string name="launcher_help_open_settings">Открыть выбор лаунчера</string>
+    <string name="launcher_help_got_it">Понятно</string>
+    <string name="admin_exit_title">Выход по паролю</string>
+    <string name="admin_exit_prompt">Введите пароль администратора</string>
+    <string name="admin_exit_confirm">Разблокировать</string>
+    <string name="admin_exit_cancel">Отмена</string>
+    <string name="admin_exit_error">Неверный пароль</string>
+    <string name="admin_exit_success">Выход разрешён на 2 минуты</string>
+    <string name="admin_exit_allow">Разрешить выход (2 мин)</string>
+    <string name="device_admin_enabled">Права администратора устройства включены</string>
+    <string name="device_admin_disabled">Права администратора устройства отключены</string>
+    
+    <!-- Kiosk Settings Screen -->
+    <string name="kiosk_settings_title">Настройки режима киоска</string>
+    <string name="kiosk_permissions_title">Разрешения</string>
+    
+    <string name="kiosk_launcher_title">Лаунчер по умолчанию</string>
+    <string name="kiosk_launcher_description">Установите приложение как домашний экран для автоматического запуска</string>
+    
+    <string name="kiosk_accessibility_title">Служба специальных возможностей</string>
+    <string name="kiosk_accessibility_description">Перехват кнопок HOME и RECENTS для блокировки выхода</string>
+    
+    <string name="kiosk_usage_stats_title">Доступ к статистике использования</string>
+    <string name="kiosk_usage_stats_description">Мониторинг активного приложения для автовозврата</string>
+    
+    <string name="kiosk_device_admin_title">Администратор устройства</string>
+    <string name="kiosk_device_admin_description">Защита от удаления приложения</string>
+    
+    <string name="kiosk_info_title">Информация</string>
+    <string name="kiosk_info_description">Для максимальной защиты включите все разрешения. Accessibility Service — ключевой компонент для блокировки кнопок HOME и переключения приложений. После включения всех разрешений выход из приложения будет возможен только через админ-панель с паролем.</string>
+    
+    <string name="protection_level_title">Уровень защиты</string>
+    <string name="protection_level_none">Нет защиты</string>
+    <string name="protection_level_basic">Базовый</string>
+    <string name="protection_level_medium">Средний</string>
+    <string name="protection_level_high">Высокий</string>
+    <string name="protection_level_maximum">Максимальный</string>
+    
+    <string name="enable">Включить</string>
+    <string name="disable">Отключить</string>
+    
+    <string name="accessibility_service_description">Служба режима киоска для блокировки кнопок HOME и переключения между приложениями. Позволяет удерживать приложение на переднем плане.</string>
+    
+    <!-- Screensaver Settings -->
+    <string name="screensaver_settings_title">Настройки экранной заставки</string>
+    <string name="show_upload_instructions">Показать инструкцию по загрузке файлов</string>
+    <string name="hide_instructions">Скрыть инструкцию</string>
+    
+    <string name="sftp_upload_instructions_title">Как загрузить файлы для заставки:</string>
+    
+    <string name="sftp_instructions_windows">Windows: Используйте WinSCP или FileZilla.\n1. Откройте программу\n2. Подключитесь к серверу (данные уточните у администратора)\n3. Загрузите PDF файлы в папку /pdf в корне сервера</string>
+    
+    <string name="sftp_instructions_macos_linux">macOS/Linux: Используйте команду в терминале:\nsftp пользователь@сервер\nПосле входа: cd /pdf, затем: put вашфайл.pdf</string>
+    
+    <string name="sftp_instructions_note">Примечание: Приложение автоматически конвертирует PDF файлы в изображения для показа в заставке. Загружайте только PDF файлы.</string>
+    
+    <!-- Settings Hub Categories -->
+    <string name="settings_category_kiosk">Режим киоска</string>
+    <string name="settings_category_kiosk_desc">Включение/отключение киоска, уровень защиты</string>
+    <string name="settings_category_permissions">Разрешения</string>
+    <string name="settings_category_permissions_desc">Управление разрешениями для режима киоска</string>
+    <string name="settings_category_screensaver">Экранная заставка</string>
+    <string name="settings_category_screensaver_desc">Время ожидания, инструкция по загрузке</string>
+    <string name="settings_category_data">Синхронизация данных</string>
+    <string name="settings_category_data_desc">Интервал обновления, API endpoint</string>
+    <string name="settings_category_bell_schedule">Расписание звонков</string>
+    <string name="settings_category_bell_schedule_desc">Настройка текста расписания на главном экране</string>
+    <string name="settings_category_main_screen_text">Текст главного окна</string>
+    <string name="settings_category_main_screen_text_desc">Заголовок и текст раздела на главном экране</string>
+    
+    <!-- Settings Screen Titles -->
+    <string name="settings_hub_title">Настройки</string>
+    <string name="kiosk_mode_screen_title">Режим киоска</string>
+    <string name="permissions_screen_title">Разрешения</string>
+    <string name="data_sync_screen_title">Синхронизация данных</string>
+    
+    <!-- Data Sync Settings -->
+    <string name="bell_schedule_screen_title">Расписание звонков</string>
+    <string name="data_refresh_interval">Интервал обновления данных</string>
+    <string name="data_refresh_interval_desc">Как часто обновлять расписание и новости (в минутах)</string>
+    <string name="api_endpoint">Адрес сервера (API)</string>
+    <string name="auto_start_enabled">Автозапуск приложения</string>
+    <string name="auto_start_enabled_desc">Автоматически запускать приложение при включении устройства</string>
+    <string name="minutes_format">%1$d мин</string>
+    <string name="save">Сохранить</string>
+
+    <!-- Bell Schedule Text -->
+    <string name="bell_schedule_title">Расписание звонков</string>
+    <string name="bell_schedule_hint">Текст для отображения на главном экране (например, расписание пар). Оставьте пустым, чтобы скрыть секцию.</string>
+    <string name="main_screen_text_title">Текст главного окна</string>
+    <string name="main_screen_section_title_label">Заголовок раздела</string>
+    <string name="main_screen_section_title_hint">Заголовок блока с текстом на главном экране. Оставьте пустым для значения по умолчанию.</string>
+    <string name="main_screen_content_label">Текст раздела</string>
+</resources>

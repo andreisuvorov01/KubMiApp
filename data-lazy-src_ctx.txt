@@ -1,0 +1,5 @@
+wp-content/uploads/2024/11/logo-kmi-e1737978097274.png" />
+<meta name="msapplication-TileImage" content="https://kubmi.ru/wp-content/uploads/2024/11/logo-kmi-e1737978097274.png" />
+<noscript><style id="rocket-lazyload-nojs-css">.rll-youtube-player, [data-lazy-src]{display:none !important;}</style></noscript><style id="wpr-lazyload-bg-container"></style><style id="wpr-lazyload-bg-exclusion"></style>
+<noscript>
+<style id="wpr-lazyload-bg-nostyle">.elementor-511 .elementor-element.elementor-element-2b768998:not(.elementor-motion-effects-element-type-background), .elementor-511 .elementor-element.elementor-element-2b768998 > .elementor-motion-effects-container > .elementor-motion-effects-layer{--wpr-bg-4e12aa30-ef1b-4d2d-8d0b-ab4b37804d1c: url(
