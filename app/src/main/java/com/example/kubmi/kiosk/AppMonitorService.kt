@@ -9,6 +9,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import com.example.kubmi.MainActivity
+import com.example.kubmi.service.KioskService
 
 class AppMonitorService : Service() {
     
@@ -37,6 +38,8 @@ class AppMonitorService : Service() {
     }
     
     private fun checkForegroundApp() {
+        if (isTemporaryExitAllowed()) return
+
         val time = System.currentTimeMillis()
         val stats = usageStatsManager.queryUsageStats(
             UsageStatsManager.INTERVAL_DAILY,
@@ -51,6 +54,10 @@ class AppMonitorService : Service() {
             Log.w(TAG, "Detected foreign app: ${foregroundApp.packageName}")
             returnToKiosk()
         }
+    }
+
+    private fun isTemporaryExitAllowed(): Boolean {
+        return KioskService.isTemporaryExitAllowed(this)
     }
     
     private fun returnToKiosk() {

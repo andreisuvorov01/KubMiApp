@@ -2,6 +2,7 @@ package com.example.kubmi.service
 
 import android.app.ActivityManager
 import android.app.ActivityOptions
+import android.app.AlarmManager
 import android.app.AppOpsManager
 import android.app.Notification
 import android.app.NotificationChannel
@@ -17,10 +18,12 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.Process
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.kubmi.MainActivity
 import com.example.kubmi.R
+import com.example.kubmi.receiver.KioskRelockReceiver
 
 /**
  * Lightweight watchdog to return the app to foreground if a user exits it.
@@ -57,7 +60,8 @@ class KioskService : Service() {
 
     private fun ensureAppInForeground() {
         val inForeground = isAppInForeground()
-        val tempExitAllowed = isTemporaryExitAllowed()
+        val tempExitAllowed = isTemporaryExitAllowed(this)
+        updateMaintenanceNotification()
         
         // #region agent log
         com.example.kubmi.util.DebugLogger.log("C", "KioskService:ensureAppInForeground", "Checking foreground", mapOf("inForeground" to inForeground, "tempExitAllowed" to tempExitAllowed))
@@ -176,22 +180,6 @@ class KioskService : Service() {
         return lastForegroundPackage
     }
 
-    private fun isTemporaryExitAllowed(): Boolean {
-        val prefs = getSharedPreferences(PREF_KIOSK_GUARD, Context.MODE_PRIVATE)
-        val allowUntil = prefs.getLong(KEY_ALLOW_EXIT_UNTIL, 0L)
-        val now = System.currentTimeMillis()
-        val isAllowed = now < allowUntil
-        val remainingMs = if (isAllowed) allowUntil - now else 0
-        
-        // #region agent log
-        if (isAllowed && remainingMs < 15000) {
-            com.example.kubmi.util.DebugLogger.log("D", "KioskService:isTemporaryExitAllowed", "Exit window status", mapOf("allowed" to isAllowed, "remainingMs" to remainingMs))
-        }
-        // #endregion
-        
-        return isAllowed
-    }
-
     private fun moveTaskToFront(): Boolean {
         val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -218,6 +206,7 @@ class KioskService : Service() {
 
     private fun buildNotification(): Notification {
         val channelId = ensureChannel()
+        val remainingMs = remainingMaintenanceMillis(this)
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
@@ -225,14 +214,43 @@ class KioskService : Service() {
             PendingIntent.FLAG_IMMUTABLE
         )
 
+        val relockIntent = Intent(this, KioskRelockReceiver::class.java).apply {
+            action = KioskRelockReceiver.ACTION_RELOCK_NOW
+        }
+        val relockPendingIntent = PendingIntent.getBroadcast(
+            this,
+            1,
+            relockIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val body = if (remainingMs > 0L) {
+            val totalSeconds = (remainingMs + 999L) / 1000L
+            val minutes = totalSeconds / 60L
+            val seconds = totalSeconds % 60L
+            "Режим обслуживания: %d:%02d".format(minutes, seconds)
+        } else {
+            getString(R.string.kiosk_service_notification_body)
+        }
+
         return NotificationCompat.Builder(this, channelId)
             .setContentTitle(getString(R.string.kiosk_service_notification_title))
-            .setContentText(getString(R.string.kiosk_service_notification_body))
+            .setContentText(body)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
+            .apply {
+                if (remainingMs > 0L) {
+                    addAction(0, "Вернуться в kiosk", relockPendingIntent)
+                }
+            }
             .build()
+    }
+
+    private fun updateMaintenanceNotification() {
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(NOTIFICATION_ID, buildNotification())
     }
 
     private fun ensureChannel(): String {
@@ -242,7 +260,7 @@ class KioskService : Service() {
             val channel = NotificationChannel(
                 channelId,
                 getString(R.string.kiosk_service_channel_name),
-                NotificationManager.IMPORTANCE_MIN
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = getString(R.string.kiosk_service_channel_desc)
                 setShowBadge(false)
@@ -254,12 +272,88 @@ class KioskService : Service() {
 
     companion object {
         private const val NOTIFICATION_ID = 1001
-        private const val CHANNEL_ID = "kiosk_guard_channel"
+        private const val CHANNEL_ID = "kiosk_guard_channel_v2"
         private const val CHECK_INTERVAL_MS = 1500L
+        private const val RELOCK_ALARM_REQUEST_CODE = 1002
         const val PREF_KIOSK_GUARD = "kiosk_guard"
-        const val KEY_ALLOW_EXIT_UNTIL = "allow_exit_until"
+        const val KEY_ALLOW_EXIT_UNTIL = "allow_exit_until_elapsed"
+        private const val KEY_ALLOW_EXIT_STARTED = "allow_exit_started_elapsed"
         const val ALLOW_EXIT_WINDOW_MS = 20_000L
         const val ADMIN_EXIT_WINDOW_MS = 120_000L
+
+        fun allowTemporaryExit(context: Context, durationMs: Long) {
+            val now = SystemClock.elapsedRealtime()
+            val until = now + durationMs.coerceAtLeast(0L)
+            context.getSharedPreferences(PREF_KIOSK_GUARD, Context.MODE_PRIVATE)
+                .edit()
+                .putLong(KEY_ALLOW_EXIT_STARTED, now)
+                .putLong(KEY_ALLOW_EXIT_UNTIL, until)
+                .remove("allow_exit_until")
+                .apply()
+            scheduleRelock(context, until)
+        }
+
+        fun isTemporaryExitAllowed(context: Context): Boolean {
+            val prefs = context.getSharedPreferences(PREF_KIOSK_GUARD, Context.MODE_PRIVATE)
+            val started = prefs.getLong(KEY_ALLOW_EXIT_STARTED, 0L)
+            val until = prefs.getLong(KEY_ALLOW_EXIT_UNTIL, 0L)
+            val now = SystemClock.elapsedRealtime()
+            val allowed = started > 0L && now >= started && now < until
+            if (!allowed && (started != 0L || until != 0L)) {
+                clearTemporaryExit(context)
+            }
+            return allowed
+        }
+
+        fun remainingMaintenanceMillis(context: Context): Long {
+            if (!isTemporaryExitAllowed(context)) return 0L
+            val until = context.getSharedPreferences(PREF_KIOSK_GUARD, Context.MODE_PRIVATE)
+                .getLong(KEY_ALLOW_EXIT_UNTIL, 0L)
+            return (until - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+        }
+
+        fun clearTemporaryExit(context: Context) {
+            context.getSharedPreferences(PREF_KIOSK_GUARD, Context.MODE_PRIVATE)
+                .edit()
+                .remove(KEY_ALLOW_EXIT_STARTED)
+                .remove(KEY_ALLOW_EXIT_UNTIL)
+                .remove("allow_exit_until")
+                .apply()
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.cancel(relockPendingIntent(context))
+        }
+
+        private fun scheduleRelock(context: Context, triggerElapsed: Long) {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val pendingIntent = relockPendingIntent(context)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                !alarmManager.canScheduleExactAlarms()
+            ) {
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    triggerElapsed,
+                    pendingIntent
+                )
+            } else {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    triggerElapsed,
+                    pendingIntent
+                )
+            }
+        }
+
+        private fun relockPendingIntent(context: Context): PendingIntent {
+            val intent = Intent(context, KioskRelockReceiver::class.java).apply {
+                action = KioskRelockReceiver.ACTION_RELOCK_NOW
+            }
+            return PendingIntent.getBroadcast(
+                context,
+                RELOCK_ALARM_REQUEST_CODE,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
 
         fun start(context: Context) {
             try {

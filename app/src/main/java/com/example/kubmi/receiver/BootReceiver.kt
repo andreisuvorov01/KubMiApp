@@ -3,6 +3,7 @@ package com.example.kubmi.receiver
 import android.app.ActivityOptions
 import android.app.AlarmManager
 import android.app.PendingIntent
+import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -32,6 +33,7 @@ class BootReceiver : BroadcastReceiver() {
     
     override fun onReceive(context: Context, intent: Intent) {
         Log.d(TAG, "Received intent: ${intent.action}")
+        KioskService.clearTemporaryExit(context)
         
         when (intent.action) {
             // Основные события загрузки
@@ -128,14 +130,18 @@ class BootReceiver : BroadcastReceiver() {
             context.startService(appMonitorIntent)
             Log.d(TAG, "✓ AppMonitorService started")
             
-            // Запуск OverlayService (если доступен)
-            val overlayIntent = Intent(context, com.example.kubmi.OverlayService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(overlayIntent)
-            } else {
-                context.startService(overlayIntent)
+            // Overlay нужен только как fallback без настоящего Device Owner Lock Task.
+            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE)
+                as DevicePolicyManager
+            if (!dpm.isDeviceOwnerApp(context.packageName)) {
+                val overlayIntent = Intent(context, com.example.kubmi.OverlayService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(overlayIntent)
+                } else {
+                    context.startService(overlayIntent)
+                }
+                Log.d(TAG, "✓ OverlayService started in fallback mode")
             }
-            Log.d(TAG, "✓ OverlayService started")
             
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start background services", e)

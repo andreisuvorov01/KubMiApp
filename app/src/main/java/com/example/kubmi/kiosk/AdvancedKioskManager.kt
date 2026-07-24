@@ -8,14 +8,19 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.UserManager
+import android.provider.Settings
 import android.util.Log
+import com.example.kubmi.MainActivity
+import com.example.kubmi.service.KioskService
 import com.example.kubmi.receiver.DeviceAdminReceiver
 import com.example.kubmi.service.KioskAccessibilityService
 import com.example.kubmi.service.KioskJobService
+import com.example.kubmi.util.AdminLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -77,6 +82,7 @@ class AdvancedKioskManager @Inject constructor(
 
         // Уровень 1: Lock Task
         setLockTaskPackages()
+        configurePersistentHome()
 
         // Уровень 2-5: Device Owner функции
         blockSystemFeatures()
@@ -113,6 +119,24 @@ class AdvancedKioskManager @Inject constructor(
                 Log.d(TAG, "✓ Lock task packages configured for: ${context.packageName}")
             } catch (e: Exception) {
                 Log.e(TAG, "✗ Failed to set lock task packages", e)
+            }
+        }
+
+        /**
+         * Назначает MainActivity постоянным HOME для полностью управляемого устройства.
+         * Во время авторизованного выхода эта привязка временно снимается.
+         */
+        private fun configurePersistentHome() {
+            try {
+                val filter = IntentFilter(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    addCategory(Intent.CATEGORY_DEFAULT)
+                }
+                val activity = ComponentName(context, MainActivity::class.java)
+                dpm.addPersistentPreferredActivity(adminComponent, filter, activity)
+                Log.d(TAG, "✓ Persistent HOME configured")
+            } catch (e: Exception) {
+                Log.e(TAG, "✗ Failed to configure persistent HOME", e)
             }
         }
 
@@ -217,18 +241,15 @@ class AdvancedKioskManager @Inject constructor(
             val blockedPackages = listOf(
                 // Настройки и управление
                 "com.android.settings",
-                "com.android.systemui",
                 "com.android.packageinstaller",
                 "com.google.android.packageinstaller",
 
-                // Play Store и Google Services
+                // Play Store
                 "com.android.vending",
-                "com.google.android.gms",
                 "com.google.android.play.core",
 
                 // Браузеры
                 "com.android.chrome",
-                "com.google.android.webview",
 
                 // Файловый менеджер
                 "com.android.documentsui",
@@ -307,12 +328,11 @@ class AdvancedKioskManager @Inject constructor(
          */
         private fun configurePowerManagement() {
             try {
-                // Блокировка некоторых функций питания через Lock Task
+                // Не разрешаем системное меню долгого нажатия Power и другие SystemUI-функции.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     dpm.setLockTaskFeatures(
                         adminComponent,
-                        DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO or
-                                DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
+                        DevicePolicyManager.LOCK_TASK_FEATURE_NONE
                     )
                 }
 
@@ -371,12 +391,93 @@ class AdvancedKioskManager @Inject constructor(
                 }
 
                 fun stopLockTask(activity: Activity) {
+                    try {
+                        activity.stopLockTask()
+                        Log.d(TAG, "✓ Lock task mode stopped")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Lock task was not active or could not be stopped", e)
+                    }
+                }
+
+                /**
+                 * Временно снимает kiosk-защиту для уже авторизованного администратора.
+                 * Watchdog продолжает работать и вернёт приложение после истечения окна.
+                 */
+                fun beginAdminMaintenance(activity: Activity, durationMs: Long) {
+                    KioskService.allowTemporaryExit(context, durationMs)
+                    AdminLogger(context).logAction(
+                        "KIOSK_MAINTENANCE_STARTED",
+                        "duration_ms=$durationMs"
+                    )
+
+                    stopLockTask(activity)
+
                     if (isDeviceOwner()) {
-                        try {
-                            activity.stopLockTask()
-                            Log.d(TAG, "✓ Lock task mode stopped")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "✗ Failed to stop lock task", e)
+                        runCatching {
+                            dpm.setStatusBarDisabled(adminComponent, false)
+                        }.onFailure {
+                            Log.w(TAG, "Could not enable status bar for admin maintenance", it)
+                        }
+
+                        unhideAdminApps()
+                    }
+                }
+
+                /**
+                 * Полный администраторский выход: снимает постоянный HOME и открывает
+                 * системные настройки. При следующем запуске kiosk-конфигурация
+                 * применяется снова.
+                 */
+                fun exitKioskForAdmin(
+                    activity: Activity,
+                    durationMs: Long = KioskService.ADMIN_EXIT_WINDOW_MS
+                ) {
+                    beginAdminMaintenance(activity, durationMs)
+
+                    if (isDeviceOwner()) {
+                        runCatching {
+                            dpm.clearPackagePersistentPreferredActivities(
+                                adminComponent,
+                                context.packageName
+                            )
+                        }.onFailure {
+                            Log.w(TAG, "Could not clear persistent HOME for admin exit", it)
+                        }
+                    }
+
+                    val settingsIntent = Intent(Settings.ACTION_SETTINGS).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_HOME)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    val exitIntent = if (
+                        settingsIntent.resolveActivity(context.packageManager) != null
+                    ) {
+                        settingsIntent
+                    } else {
+                        homeIntent
+                    }
+
+                    activity.startActivity(exitIntent)
+                    activity.finishAndRemoveTask()
+                }
+
+                private fun unhideAdminApps() {
+                    val packages = listOf(
+                        "com.android.settings",
+                        "com.google.android.tvlauncher",
+                        "com.google.android.leanbacklauncher",
+                        "com.android.launcher",
+                        "com.android.launcher2",
+                        "com.android.launcher3"
+                    )
+                    packages.forEach { packageName ->
+                        runCatching {
+                            dpm.setApplicationHidden(adminComponent, packageName, false)
+                        }.onFailure {
+                            Log.v(TAG, "Could not unhide $packageName: ${it.message}")
                         }
                     }
                 }
@@ -557,7 +658,7 @@ class AdvancedKioskManager @Inject constructor(
                             if (isDeviceOwner) score += 30
                             if (isDefaultLauncher) score += 15
                             if (isLockTaskActive) score += 20
-                            if (isAccessibilityEnabled) score += 15
+                            if (isAccessibilityEnabled || isDeviceOwner) score += 15
                             if (isRunningInForeground) score += 10
                             if (restrictions.size >= 15) score += 5
                             if (hiddenApps.size >= 5) score += 5
@@ -638,7 +739,7 @@ class AdvancedKioskManager @Inject constructor(
                         false
                     }
 
-                    if (!isAccessibilityEnabled) {
+                    if (!isAccessibilityEnabled && !isDeviceOwner) {
                         warnings.add("Accessibility Service not enabled")
                     }
 
@@ -657,7 +758,6 @@ class AdvancedKioskManager @Inject constructor(
                         listOf(
                             "com.android.settings",
                             "com.android.vending",
-                            "com.google.android.gms",
                             "com.android.chrome",
                             "com.android.packageinstaller",
                             "com.google.android.tvlauncher",

@@ -2,7 +2,7 @@ package com.example.kubmi.domain.model
 
 sealed class AuthState {
     /** No password set yet - show setup screen */
-    object Initial : AuthState()
+    data class Initial(val errorMessage: String? = null) : AuthState()
     
     /** Loading/checking state */
     object Loading : AuthState()

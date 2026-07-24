@@ -61,10 +61,6 @@ class KioskAccessibilityService : AccessibilityService() {
         }
     }
 
-    private val kioskPrefs by lazy { 
-        getSharedPreferences(KioskService.PREF_KIOSK_GUARD, Context.MODE_PRIVATE) 
-    }
-
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -165,8 +161,7 @@ class KioskAccessibilityService : AccessibilityService() {
     }
 
     private fun isTemporaryExitAllowed(): Boolean {
-        val allowUntil = kioskPrefs.getLong(KioskService.KEY_ALLOW_EXIT_UNTIL, 0L)
-        return System.currentTimeMillis() < allowUntil
+        return KioskService.isTemporaryExitAllowed(this)
     }
 
     private fun returnToApp() {

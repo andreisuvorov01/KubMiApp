@@ -2,71 +2,142 @@ package com.example.kubmi.util
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.SystemClock
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.security.KeyStore
+import java.security.MessageDigest
+import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.PBEKeySpec
 import javax.inject.Inject
-import kotlin.random.Random
 
 class SecurePreferences @Inject constructor(@ApplicationContext private val context: Context) {
     private val preferences: SharedPreferences = context.getSharedPreferences("secure_prefs", Context.MODE_PRIVATE)
+    private val adminLogger by lazy { AdminLogger(context) }
     
     companion object {
+        const val MIN_PASSWORD_LENGTH = 8
+
+        private const val KEY_PASSWORD_HASH = "admin_password_hash"
+        private const val KEY_PASSWORD_SALT = "admin_password_salt"
+        private const val KEY_PASSWORD_ALGORITHM = "admin_password_algorithm"
+        private const val KEY_LEGACY_ENCRYPTED_PASSWORD = "admin_password"
+        private const val KEY_FAILED_ATTEMPTS = "admin_failed_attempts"
+        private const val KEY_LOCKOUT_STARTED_ELAPSED = "admin_lockout_started_elapsed"
+        private const val KEY_LOCKOUT_UNTIL_ELAPSED = "admin_lockout_until_elapsed"
+
+        private const val PBKDF2_ITERATIONS = 210_000
+        private const val PBKDF2_KEY_LENGTH_BITS = 256
+        private const val SALT_LENGTH_BYTES = 16
+        private const val MAX_ATTEMPTS_BEFORE_LOCKOUT = 5
+        private const val BASE_LOCKOUT_MS = 30_000L
+        private const val MAX_LOCKOUT_MS = 15 * 60_000L
+
+        // Retained only for one-time migration of passwords saved by older builds.
         private const val KEY_ALIAS = "kubmi_admin_key"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
-        private const val IV_LENGTH = 12 // For GCM
-        private const val TAG_LENGTH = 128 // For GCM
-        
-        // Default admin password - hardcoded
-        const val DEFAULT_PASSWORD = "kubmiadmin"
+        private const val IV_LENGTH = 12
+        private const val TAG_LENGTH = 128
     }
     
     fun savePassword(password: String) {
-        try {
-            val encryptedPassword = encrypt(password)
-            preferences.edit().putString("admin_password", encryptedPassword).apply()
-        } catch (e: Exception) {
-            // Handle encryption error
-            e.printStackTrace()
+        require(password.length >= MIN_PASSWORD_LENGTH) {
+            "Пароль должен содержать не менее $MIN_PASSWORD_LENGTH символов"
         }
+
+        val salt = ByteArray(SALT_LENGTH_BYTES).also(SecureRandom()::nextBytes)
+        val algorithm = preferredPbkdf2Algorithm()
+        val hash = derivePasswordHash(password, salt, algorithm)
+        preferences.edit()
+            .putString(KEY_PASSWORD_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
+            .putString(KEY_PASSWORD_HASH, Base64.encodeToString(hash, Base64.NO_WRAP))
+            .putString(KEY_PASSWORD_ALGORITHM, algorithm)
+            .remove(KEY_LEGACY_ENCRYPTED_PASSWORD)
+            .remove(KEY_FAILED_ATTEMPTS)
+            .remove(KEY_LOCKOUT_STARTED_ELAPSED)
+            .remove(KEY_LOCKOUT_UNTIL_ELAPSED)
+            .apply()
+        adminLogger.logAction("ADMIN_PASSWORD_SET")
     }
     
     fun verifyPassword(password: String): Boolean {
-        // First check against default password
-        if (password == DEFAULT_PASSWORD) {
-            return true
+        if (getRemainingLockoutMillis() > 0L) {
+            adminLogger.logAction("ADMIN_AUTH_BLOCKED", "lockout_active=true")
+            return false
         }
-        
-        // Then check against custom password if set
-        return try {
-            val storedPassword = preferences.getString("admin_password", null)
-            if (storedPassword != null) {
-                val decryptedPassword = decrypt(storedPassword)
-                decryptedPassword == password
+
+        val verified = try {
+            val saltBase64 = preferences.getString(KEY_PASSWORD_SALT, null)
+            val hashBase64 = preferences.getString(KEY_PASSWORD_HASH, null)
+            if (saltBase64 != null && hashBase64 != null) {
+                val salt = Base64.decode(saltBase64, Base64.NO_WRAP)
+                val expectedHash = Base64.decode(hashBase64, Base64.NO_WRAP)
+                val algorithm = preferences.getString(
+                    KEY_PASSWORD_ALGORITHM,
+                    preferredPbkdf2Algorithm()
+                ) ?: preferredPbkdf2Algorithm()
+                val actualHash = derivePasswordHash(password, salt, algorithm)
+                MessageDigest.isEqual(expectedHash, actualHash)
             } else {
-                false
+                verifyAndMigrateLegacyPassword(password)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
             false
         }
+
+        if (verified) {
+            clearFailedAttempts()
+            adminLogger.logAction("ADMIN_AUTH_SUCCESS")
+        } else {
+            recordFailedAttempt()
+            adminLogger.logAction(
+                "ADMIN_AUTH_FAILED",
+                "failed_attempts=${preferences.getInt(KEY_FAILED_ATTEMPTS, 0)}"
+            )
+        }
+        return verified
     }
     
     fun isPasswordSet(): Boolean {
-        // Always return true - default password is always available
-        return true
+        val hasHash = !preferences.getString(KEY_PASSWORD_HASH, null).isNullOrBlank() &&
+            !preferences.getString(KEY_PASSWORD_SALT, null).isNullOrBlank()
+        val hasLegacyPassword =
+            !preferences.getString(KEY_LEGACY_ENCRYPTED_PASSWORD, null).isNullOrBlank()
+        return hasHash || hasLegacyPassword
     }
     
     fun clearPassword() {
-        preferences.edit().remove("admin_password").apply()
+        preferences.edit()
+            .remove(KEY_PASSWORD_HASH)
+            .remove(KEY_PASSWORD_SALT)
+            .remove(KEY_PASSWORD_ALGORITHM)
+            .remove(KEY_LEGACY_ENCRYPTED_PASSWORD)
+            .remove(KEY_FAILED_ATTEMPTS)
+            .remove(KEY_LOCKOUT_STARTED_ELAPSED)
+            .remove(KEY_LOCKOUT_UNTIL_ELAPSED)
+            .apply()
+    }
+
+    fun getRemainingLockoutMillis(): Long {
+        val started = preferences.getLong(KEY_LOCKOUT_STARTED_ELAPSED, 0L)
+        val until = preferences.getLong(KEY_LOCKOUT_UNTIL_ELAPSED, 0L)
+        val now = SystemClock.elapsedRealtime()
+        if (started > 0L && now < started) {
+            preferences.edit()
+                .remove(KEY_LOCKOUT_STARTED_ELAPSED)
+                .remove(KEY_LOCKOUT_UNTIL_ELAPSED)
+                .apply()
+            return 0L
+        }
+        return (until - now).coerceAtLeast(0L)
     }
     
     // Screensaver mode settings
@@ -108,43 +179,77 @@ class SecurePreferences @Inject constructor(@ApplicationContext private val cont
         }
     }
     
-    private fun encrypt(input: String): String {
-        val secretKey = getOrCreateSecretKey()
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        
-        // Generate a random IV for GCM
-        val iv = ByteArray(IV_LENGTH)
-        Random.nextBytes(iv)
-        
-        val spec = GCMParameterSpec(TAG_LENGTH, iv)
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey, spec)
-        
-        val encryptedBytes = cipher.doFinal(input.toByteArray(Charsets.UTF_8))
-        
-        // Combine IV and encrypted data
-        val combined = iv + encryptedBytes
-        
-        // Encode to Base64 for storage
-        return Base64.encodeToString(combined, Base64.DEFAULT)
+    private fun derivePasswordHash(
+        password: String,
+        salt: ByteArray,
+        algorithm: String
+    ): ByteArray {
+        val spec = PBEKeySpec(
+            password.toCharArray(),
+            salt,
+            PBKDF2_ITERATIONS,
+            PBKDF2_KEY_LENGTH_BITS
+        )
+        return try {
+            SecretKeyFactory.getInstance(algorithm)
+                .generateSecret(spec)
+                .encoded
+        } finally {
+            spec.clearPassword()
+        }
     }
-    
-    private fun decrypt(encrypted: String): String {
+
+    private fun preferredPbkdf2Algorithm(): String {
+        return runCatching {
+            SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            "PBKDF2WithHmacSHA256"
+        }.getOrDefault("PBKDF2WithHmacSHA1")
+    }
+
+    private fun verifyAndMigrateLegacyPassword(password: String): Boolean {
+        val encrypted = preferences.getString(KEY_LEGACY_ENCRYPTED_PASSWORD, null)
+            ?: return false
+        val matches = decryptLegacyPassword(encrypted) == password
+        if (matches) savePassword(password)
+        return matches
+    }
+
+    private fun decryptLegacyPassword(encrypted: String): String {
         val secretKey = getOrCreateSecretKey()
         val cipher = Cipher.getInstance(TRANSFORMATION)
-        
-        // Decode from Base64
         val combined = Base64.decode(encrypted, Base64.DEFAULT)
-        
-        // Extract IV and encrypted data
         val iv = combined.copyOfRange(0, IV_LENGTH)
         val encryptedBytes = combined.copyOfRange(IV_LENGTH, combined.size)
-        
         val spec = GCMParameterSpec(TAG_LENGTH, iv)
         cipher.init(Cipher.DECRYPT_MODE, secretKey, spec)
-        
-        
         val decryptedBytes = cipher.doFinal(encryptedBytes)
         return String(decryptedBytes, Charsets.UTF_8)
+    }
+
+    private fun recordFailedAttempt() {
+        val failures = preferences.getInt(KEY_FAILED_ATTEMPTS, 0) + 1
+        val editor = preferences.edit().putInt(KEY_FAILED_ATTEMPTS, failures)
+        if (failures >= MAX_ATTEMPTS_BEFORE_LOCKOUT) {
+            val exponent = (failures - MAX_ATTEMPTS_BEFORE_LOCKOUT).coerceIn(0, 5)
+            val duration = (BASE_LOCKOUT_MS * (1L shl exponent))
+                .coerceAtMost(MAX_LOCKOUT_MS)
+            editor.putLong(
+                KEY_LOCKOUT_STARTED_ELAPSED,
+                SystemClock.elapsedRealtime()
+            ).putLong(
+                KEY_LOCKOUT_UNTIL_ELAPSED,
+                SystemClock.elapsedRealtime() + duration
+            )
+        }
+        editor.apply()
+    }
+
+    private fun clearFailedAttempts() {
+        preferences.edit()
+            .remove(KEY_FAILED_ATTEMPTS)
+            .remove(KEY_LOCKOUT_STARTED_ELAPSED)
+            .remove(KEY_LOCKOUT_UNTIL_ELAPSED)
+            .apply()
     }
 }
 

@@ -33,6 +33,7 @@
     <string name="email">Email: info@kubmi.ru</string>
     <string name="admin_set_password_title">Установка пароля администратора</string>
     <string name="admin_enter_new_password">Введите новый пароль:</string>
+    <string name="confirm_password">Подтвердите пароль</string>
     <string name="set_password">Установить пароль</string>
     <string name="admin_login_title">Вход в админ-панель</string>
     <string name="admin_enter_password">Введите пароль:</string>
@@ -86,12 +87,13 @@
     <string name="launcher_help_open_settings">Открыть выбор лаунчера</string>
     <string name="launcher_help_got_it">Понятно</string>
     <string name="admin_exit_title">Выход по паролю</string>
+    <string name="admin_exit_duration">Длительность режима обслуживания</string>
     <string name="admin_exit_prompt">Введите пароль администратора</string>
     <string name="admin_exit_confirm">Разблокировать</string>
     <string name="admin_exit_cancel">Отмена</string>
     <string name="admin_exit_error">Неверный пароль</string>
     <string name="admin_exit_success">Выход разрешён на 2 минуты</string>
-    <string name="admin_exit_allow">Разрешить выход (2 мин)</string>
+    <string name="admin_exit_allow">Выйти из kiosk-режима (2 мин)</string>
     <string name="device_admin_enabled">Права администратора устройства включены</string>
     <string name="device_admin_disabled">Права администратора устройства отключены</string>
     

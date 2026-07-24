@@ -57,7 +57,6 @@ class MainActivity : ComponentActivity() {
     lateinit var advancedKioskManager: AdvancedKioskManager
     
     private val launcherPrefs by lazy { getSharedPreferences("launcher_prefs", MODE_PRIVATE) }
-    private val kioskPrefs by lazy { getSharedPreferences(KioskService.PREF_KIOSK_GUARD, MODE_PRIVATE) }
     private val returnHandler = Handler(Looper.getMainLooper())
 
     // Screensaver related variables
@@ -79,14 +78,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Setup advanced kiosk mode
-        advancedKioskManager.setupFullKioskMode()
-        if (advancedKioskManager.isDeviceOwner()) {
-            advancedKioskManager.startLockTask(this)
-            Log.d(TAG, "Device Owner mode - Lock Task started")
+        if (!isTemporaryExitAllowed()) {
+            activateKioskMode()
         }
-        
-        KioskManager.enableKioskMode(this)
         KioskService.start(this)
 
         checkOverlayPermission()
@@ -116,7 +110,17 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     Box(modifier = Modifier.fillMaxSize()) {
-                        NavGraph(navController = navController)
+                        val startDestination = remember {
+                            if (securePrefs.isPasswordSet()) {
+                                com.example.kubmi.presentation.navigation.Screen.Main.route
+                            } else {
+                                com.example.kubmi.presentation.navigation.Screen.Admin.route
+                            }
+                        }
+                        NavGraph(
+                            navController = navController,
+                            startDestination = startDestination
+                        )
 
                         if (showLauncherPrompt.value) {
                             LauncherSelectionDialog(
@@ -181,7 +185,9 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         returnHandler.removeCallbacksAndMessages(null) // Cancel pending bring-to-foreground callbacks to avoid lifecycle bounce
-        KioskManager.enableKioskMode(this)
+        if (!isTemporaryExitAllowed()) {
+            activateKioskMode()
+        }
         resetScreensaverTimer()
         Log.d(TAG, "#D(run2|F) onResume called.")
     }
@@ -232,8 +238,10 @@ class MainActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
-            KioskManager.enableKioskMode(this)
-            Log.d(TAG, "#D(run2|A) Window focus gained, KioskMode enabled.")
+            if (!isTemporaryExitAllowed()) {
+                KioskManager.enableKioskMode(this)
+                Log.d(TAG, "#D(run2|A) Window focus gained, KioskMode enabled.")
+            }
         } else {
             Log.w(TAG, "Window focus lost in kiosk mode; scheduling foreground return")
             scheduleReturnIfNeeded()
@@ -246,6 +254,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun isBlockedKey(keyCode: Int): Boolean = isBlockedKeyCode(keyCode)
+
+    private fun activateKioskMode() {
+        advancedKioskManager.setupFullKioskMode()
+        KioskManager.enableKioskMode(this)
+        Log.d(TAG, "Full kiosk mode activated")
+    }
 
     private fun isBlockedKeyEvent(event: KeyEvent): Boolean {
         if (isBlockedKeyCode(event.keyCode)) return true
@@ -277,7 +291,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun shouldShowLauncherHelp(): Boolean =
-        !launcherPrefs.getBoolean(KEY_LAUNCHER_HELP_SEEN, false)
+        !advancedKioskManager.isDeviceOwner() &&
+            !launcherPrefs.getBoolean(KEY_LAUNCHER_HELP_SEEN, false)
 
     private fun markLauncherHelpShown() {
         launcherPrefs.edit().putBoolean(KEY_LAUNCHER_HELP_SEEN, true).apply()
@@ -316,20 +331,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun allowTemporaryExit() {
-        kioskPrefs.edit()
-            .putLong(
-                KioskService.KEY_ALLOW_EXIT_UNTIL,
-                System.currentTimeMillis() + KioskService.ALLOW_EXIT_WINDOW_MS
-            )
-            .apply()
+        KioskService.allowTemporaryExit(this, KioskService.ALLOW_EXIT_WINDOW_MS)
     }
 
     private fun isTemporaryExitAllowed(): Boolean {
-        val until = kioskPrefs.getLong(KioskService.KEY_ALLOW_EXIT_UNTIL, 0L)
-        return System.currentTimeMillis() < until
+        return KioskService.isTemporaryExitAllowed(this)
     }
 
     private fun startOverlayServiceIfAllowed() {
+        if (advancedKioskManager.isDeviceOwner()) return
         if (isTvDevice()) return // Skip overlay service on TV
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
@@ -348,6 +358,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun checkOverlayPermission() {
+        if (advancedKioskManager.isDeviceOwner()) {
+            Log.d(TAG, "Overlay permission is not required in Device Owner Lock Task mode.")
+            return
+        }
         if (isTvDevice()) {
             Log.d(TAG, "#D(run2|D) Skipping overlay permission check on TV device.")
             return

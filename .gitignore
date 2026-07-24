@@ -48,3 +48,4 @@ captures/
 *.key
 **/google-services.json
 *.env
+keystore.properties

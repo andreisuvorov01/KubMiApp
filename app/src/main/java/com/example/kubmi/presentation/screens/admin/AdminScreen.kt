@@ -1,8 +1,6 @@
 package com.example.kubmi.presentation.screens.admin
 
 import android.app.Activity
-import android.content.Context
-import android.content.Intent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -23,15 +21,23 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.example.kubmi.R
 import com.example.kubmi.domain.model.AuthState
+import com.example.kubmi.kiosk.AdvancedKioskManager
 import com.example.kubmi.presentation.navigation.Screen
-import com.example.kubmi.service.KioskService
 import com.example.kubmi.util.SecurePreferences
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminScreen(navController: NavController) {
     val viewModel: AdminAuthViewModel = hiltViewModel()
+    val context = LocalContext.current
+    val kioskManager = remember(context) {
+        AdvancedKioskManager(context.applicationContext)
+    }
     var password by remember { mutableStateOf("") }
+    var passwordConfirmation by remember { mutableStateOf("") }
     val authState by viewModel.authState.collectAsState()
 
     when (val state = authState) {
@@ -40,11 +46,13 @@ fun AdminScreen(navController: NavController) {
             SetPasswordScreen(
                 password = password,
                 onPasswordChange = { password = it },
+                passwordConfirmation = passwordConfirmation,
+                onPasswordConfirmationChange = { passwordConfirmation = it },
                 onSetPassword = { 
-                    viewModel.setPassword(password)
-                    password = ""
+                    viewModel.setPassword(password, passwordConfirmation)
                 },
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                errorMessage = state.errorMessage
             )
         }
         
@@ -63,7 +71,7 @@ fun AdminScreen(navController: NavController) {
         }
         
         is AuthState.Authenticated -> {
-            AdminMainScreen(navController)
+            AdminMainScreen(navController, kioskManager)
         }
         
         is AuthState.Loading -> {
@@ -77,8 +85,11 @@ fun AdminScreen(navController: NavController) {
 private fun SetPasswordScreen(
     password: String,
     onPasswordChange: (String) -> Unit,
+    passwordConfirmation: String,
+    onPasswordConfirmationChange: (String) -> Unit,
     onSetPassword: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    errorMessage: String?
 ) {
     Scaffold(
         topBar = {
@@ -124,12 +135,35 @@ private fun SetPasswordScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(0.8f)
             )
-            
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = passwordConfirmation,
+                onValueChange = onPasswordConfirmationChange,
+                label = { Text(stringResource(R.string.confirm_password)) },
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                singleLine = true,
+                isError = errorMessage != null,
+                modifier = Modifier.fillMaxWidth(0.8f)
+            )
+
+            if (errorMessage != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = errorMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
             
             Button(
                 onClick = onSetPassword,
-                enabled = password.isNotBlank(),
+                enabled = password.length >= SecurePreferences.MIN_PASSWORD_LENGTH &&
+                    passwordConfirmation.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(0.8f)
             ) {
                 Text(stringResource(R.string.set_password))
@@ -238,12 +272,17 @@ private fun LoadingScreen() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AdminMainScreen(navController: NavController) {
+fun AdminMainScreen(
+    navController: NavController,
+    kioskManager: AdvancedKioskManager
+) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val securePrefs = remember { SecurePreferences(context.applicationContext) }
     var exitPassword by remember { mutableStateOf("") }
     var exitError by remember { mutableStateOf(false) }
-    var exitSuccess by remember { mutableStateOf(false) }
+    var exitVerificationInProgress by remember { mutableStateOf(false) }
+    var exitDurationMs by remember { mutableStateOf(2 * 60_000L) }
     var screensaverMode by remember { mutableStateOf(securePrefs.getScreensaverMode()) }
     var showInstructions by remember { mutableStateOf(false) }
     
@@ -277,10 +316,7 @@ fun AdminMainScreen(navController: NavController) {
         ) {
             // Kiosk Settings Button - most important
             Button(
-                onClick = { 
-                    allowAdminExit(context)
-                    navController.navigate(Screen.KioskSettings.route)
-                },
+                onClick = { navController.navigate(Screen.KioskSettings.route) },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(stringResource(R.string.kiosk_settings_title))
@@ -438,13 +474,34 @@ fun AdminMainScreen(navController: NavController) {
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
+
+            Text(
+                text = stringResource(R.string.admin_exit_duration),
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    60_000L to "1 мин",
+                    2 * 60_000L to "2 мин",
+                    5 * 60_000L to "5 мин"
+                ).forEach { (duration, label) ->
+                    FilterChip(
+                        selected = exitDurationMs == duration,
+                        onClick = { exitDurationMs = duration },
+                        label = { Text(label) }
+                    )
+                }
+            }
             
             OutlinedTextField(
                 value = exitPassword,
                 onValueChange = {
                     exitPassword = it
                     exitError = false
-                    exitSuccess = false
                 },
                 label = { Text(stringResource(R.string.admin_exit_prompt)) },
                 visualTransformation = PasswordVisualTransformation(),
@@ -455,63 +512,53 @@ fun AdminMainScreen(navController: NavController) {
             )
             
             if (exitError) {
+                val remainingSeconds =
+                    (securePrefs.getRemainingLockoutMillis() + 999L) / 1000L
                 Text(
-                    text = stringResource(R.string.admin_exit_error),
+                    text = if (remainingSeconds > 0L) {
+                        "Слишком много попыток. Повторите через $remainingSeconds сек."
+                    } else {
+                        stringResource(R.string.admin_exit_error)
+                    },
                     color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-            
-            if (exitSuccess) {
-                Text(
-                    text = stringResource(R.string.admin_exit_success),
-                    color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
             
             Button(
                 onClick = {
-                    val ok = securePrefs.verifyPassword(exitPassword)
-                    if (ok) {
-                        allowAdminExit(context)
-                        exitPassword = ""
-                        exitError = false
-                        exitSuccess = true
-                    } else {
-                        exitError = true
-                        exitSuccess = false
+                    exitVerificationInProgress = true
+                    coroutineScope.launch {
+                        val ok = withContext(Dispatchers.Default) {
+                            securePrefs.verifyPassword(exitPassword)
+                        }
+                        exitVerificationInProgress = false
+                        if (ok) {
+                            val activity = context as? Activity
+                            if (activity != null) {
+                                exitPassword = ""
+                                exitError = false
+                                kioskManager.exitKioskForAdmin(activity, exitDurationMs)
+                            } else {
+                                exitError = true
+                            }
+                        } else {
+                            exitError = true
+                        }
                     }
                 },
-                enabled = exitPassword.isNotBlank(),
+                enabled = exitPassword.isNotBlank() && !exitVerificationInProgress,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(stringResource(R.string.admin_exit_allow))
-            }
-            
-            Spacer(modifier = Modifier.weight(1f))
-            
-            // Exit app button at the bottom
-            Button(
-                onClick = { (context as? Activity)?.finish() },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error
-                )
-            ) {
-                Text(stringResource(R.string.exit_app))
+                if (exitVerificationInProgress) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text("Выйти из kiosk-режима (${exitDurationMs / 60_000L} мин)")
+                }
             }
         }
     }
-}
-
-private fun allowAdminExit(context: Context) {
-    val prefs = context.getSharedPreferences(KioskService.PREF_KIOSK_GUARD, Context.MODE_PRIVATE)
-    prefs.edit()
-        .putLong(
-            KioskService.KEY_ALLOW_EXIT_UNTIL,
-            System.currentTimeMillis() + KioskService.ADMIN_EXIT_WINDOW_MS
-        )
-        .apply()
-    context.stopService(Intent(context, KioskService::class.java))
 }

@@ -38,7 +38,10 @@ import com.google.accompanist.navigation.animation.composable
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
-fun NavGraph(navController: NavHostController) {
+fun NavGraph(
+    navController: NavHostController,
+    startDestination: String = Screen.Main.route
+) {
     val routeOrder = rememberRouteOrder()
     val enter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
         slideInHorizontally(
@@ -77,7 +80,7 @@ fun NavGraph(navController: NavHostController) {
 
     AnimatedNavHost(
         navController = navController,
-        startDestination = Screen.Main.route,
+        startDestination = startDestination,
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)

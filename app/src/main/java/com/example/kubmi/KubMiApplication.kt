@@ -4,7 +4,6 @@ import android.app.Application
 import android.content.Context
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
-import com.example.kubmi.util.SecurePreferences
 import com.example.kubmi.util.WorkScheduler
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
@@ -43,12 +42,6 @@ class KubMiApplication : Application(), Configuration.Provider, ImageLoaderFacto
         // Initialize Timber for logging
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
-        }
-
-        // Ensure default admin password exists for kiosk exit flow.
-        val securePreferences = SecurePreferences(this)
-        if (!securePreferences.isPasswordSet()) {
-            securePreferences.savePassword("kubmiadmin")
         }
 
         setupWorkManager()

@@ -2,14 +2,12 @@ package com.example.kubmi.util
 
 import android.app.Activity
 import android.app.admin.DevicePolicyManager
-import android.content.ComponentName
 import android.content.Context
 import android.os.Build
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
-import com.example.kubmi.receiver.DeviceAdminReceiver
 
 object KioskManager {
     fun enableKioskMode(activity: Activity) {
@@ -45,12 +43,11 @@ object KioskManager {
     fun startLockTaskIfAllowed(activity: Activity) {
         try {
             val dpm = activity.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-            val component = ComponentName(activity, DeviceAdminReceiver::class.java)
-            if (dpm.isDeviceOwnerApp(activity.packageName) || dpm.isLockTaskPermitted(activity.packageName) || dpm.isAdminActive(component)) {
+            if (dpm.isLockTaskPermitted(activity.packageName)) {
                 activity.startLockTask()
             }
         } catch (_: Exception) {
-            // Non-device-owner installations cannot always enter pinned lock task mode programmatically.
+            // Only an allowlisted Device Owner installation can enter real Lock Task mode.
         }
     }
 

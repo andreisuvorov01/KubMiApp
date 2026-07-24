@@ -8,7 +8,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -25,26 +27,33 @@ class AdminAuthViewModel @Inject constructor(
     
     private fun checkPasswordStatus() {
         viewModelScope.launch {
-            // Password is always set (default: kubmiadmin), so always require auth
-            _authState.value = AuthState.RequiresAuth()
+            _authState.value = if (securePreferences.isPasswordSet()) {
+                AuthState.RequiresAuth()
+            } else {
+                AuthState.Initial()
+            }
         }
     }
     
     /**
      * Set password for the first time and immediately authenticate
      */
-    fun setPassword(password: String) {
-        if (password.isBlank()) {
+    fun setPassword(password: String, confirmation: String) {
+        if (password != confirmation) {
+            _authState.value = AuthState.Initial("Пароли не совпадают")
             return
         }
         viewModelScope.launch {
             _authState.value = AuthState.Loading
             try {
-                securePreferences.savePassword(password)
-                // After setting password, user is immediately authenticated
+                withContext(Dispatchers.Default) {
+                    securePreferences.savePassword(password)
+                }
                 _authState.value = AuthState.Authenticated
             } catch (e: Exception) {
-                _authState.value = AuthState.Initial
+                _authState.value = AuthState.Initial(
+                    e.message ?: "Не удалось сохранить пароль"
+                )
             }
         }
     }
@@ -56,12 +65,20 @@ class AdminAuthViewModel @Inject constructor(
         viewModelScope.launch {
             _authState.value = AuthState.Loading
             try {
-                val isAuthenticated = securePreferences.verifyPassword(password)
+                val isAuthenticated = withContext(Dispatchers.Default) {
+                    securePreferences.verifyPassword(password)
+                }
                 _authState.value = if (isAuthenticated) {
                     AuthState.Authenticated
                 } else {
-                    // Stay on login screen with error message
-                    AuthState.RequiresAuth(errorMessage = "Неверный пароль")
+                    val remainingSeconds =
+                        (securePreferences.getRemainingLockoutMillis() + 999L) / 1000L
+                    val error = if (remainingSeconds > 0L) {
+                        "Слишком много попыток. Повторите через $remainingSeconds сек."
+                    } else {
+                        "Неверный пароль"
+                    }
+                    AuthState.RequiresAuth(errorMessage = error)
                 }
             } catch (e: Exception) {
                 _authState.value = AuthState.RequiresAuth(errorMessage = "Ошибка проверки пароля")
@@ -76,7 +93,7 @@ class AdminAuthViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 securePreferences.clearPassword()
-                _authState.value = AuthState.Initial
+                _authState.value = AuthState.Initial()
             } catch (e: Exception) {
                 // Ignore errors during reset
             }

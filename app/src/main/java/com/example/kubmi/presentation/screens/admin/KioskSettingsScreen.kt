@@ -1,6 +1,6 @@
 package com.example.kubmi.presentation.screens.admin
 
-import android.content.Context
+import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -24,7 +24,6 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.kubmi.R
 import com.example.kubmi.kiosk.AdvancedKioskManager
-import com.example.kubmi.service.KioskService
 import com.example.kubmi.util.KioskPermissionManager
 import com.example.kubmi.util.KioskPermissionManager.ProtectionLevel
 import com.example.kubmi.util.SecurePreferences
@@ -236,8 +235,9 @@ fun KioskSettingsScreen(
                 description = stringResource(R.string.kiosk_launcher_description),
                 isEnabled = permissionStatus.isDefaultLauncher,
                 onEnableClick = {
-                    // Only allow SHORT exit for settings (10 seconds)
-                    allowShortExit(context)
+                    (context as? Activity)?.let {
+                        kioskManager.beginAdminMaintenance(it, 10_000L)
+                    }
                     permissionManager.openLauncherSettings()
                 }
             )
@@ -248,7 +248,9 @@ fun KioskSettingsScreen(
                 description = stringResource(R.string.kiosk_accessibility_description),
                 isEnabled = permissionStatus.isAccessibilityEnabled,
                 onEnableClick = {
-                    allowShortExit(context)
+                    (context as? Activity)?.let {
+                        kioskManager.beginAdminMaintenance(it, 10_000L)
+                    }
                     permissionManager.openAccessibilitySettings()
                 }
             )
@@ -259,7 +261,9 @@ fun KioskSettingsScreen(
                 description = stringResource(R.string.kiosk_usage_stats_description),
                 isEnabled = permissionStatus.isUsageStatsEnabled,
                 onEnableClick = {
-                    allowShortExit(context)
+                    (context as? Activity)?.let {
+                        kioskManager.beginAdminMaintenance(it, 10_000L)
+                    }
                     permissionManager.openUsageStatsSettings()
                 }
             )
@@ -436,30 +440,6 @@ private fun PermissionItem(
             }
         }
     }
-}
-
-private fun allowTemporaryExit(context: Context) {
-    val prefs = context.getSharedPreferences(KioskService.PREF_KIOSK_GUARD, Context.MODE_PRIVATE)
-    prefs.edit()
-        .putLong(
-            KioskService.KEY_ALLOW_EXIT_UNTIL,
-            System.currentTimeMillis() + KioskService.ADMIN_EXIT_WINDOW_MS
-        )
-        .apply()
-}
-
-/**
- * Allow only a short exit window (10 seconds) for opening settings screens
- * This prevents the full 2-minute window from being activated on every button click
- */
-private fun allowShortExit(context: Context) {
-    val prefs = context.getSharedPreferences(KioskService.PREF_KIOSK_GUARD, Context.MODE_PRIVATE)
-    prefs.edit()
-        .putLong(
-            KioskService.KEY_ALLOW_EXIT_UNTIL,
-            System.currentTimeMillis() + 10_000L // Only 10 seconds
-        )
-        .apply()
 }
 
 @Composable

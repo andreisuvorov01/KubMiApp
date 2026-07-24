@@ -126,7 +126,7 @@
 │    УРОВЕНЬ 5: LOCK TASK FEATURES (Android 9+)             │
 │  • LOCK_TASK_FEATURE_NONE - отключить все                   │
 │  • LOCK_TASK_FEATURE_SYSTEM_INFO - скрыть информацию        │
-│  • LOCK_TASK_FEATURE_GLOBAL_ACTIONS - заблокировать меню   │
+│  • Отключить global actions — заблокировать системное меню │
 │  • Полный контроль над системными функциями                 │
 └─────────────────────────────────────────────────────────────┘
                               ↓

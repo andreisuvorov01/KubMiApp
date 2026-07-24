@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -6,17 +8,42 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val releaseSigningProperties = Properties().apply {
+    val propertiesFile = rootProject.file("keystore.properties")
+    if (propertiesFile.exists()) {
+        propertiesFile.inputStream().use(::load)
+    }
+}
+
+fun releaseSigningValue(name: String): String? =
+    releaseSigningProperties.getProperty(name)
+        ?: System.getenv(name)
+
 android {
     namespace = "com.example.kubmi"
     compileSdk = 35
 
-    signingConfigs {
-        create("release") {
-            storeFile = file("kubmi-release.jks")
-            storePassword = "kubmi2024"
-            keyAlias = "kubmi"
-            keyPassword = "kubmi2024"
+    val releaseStoreFile = releaseSigningValue("KUBMI_RELEASE_STORE_FILE")
+    val releaseStorePassword = releaseSigningValue("KUBMI_RELEASE_STORE_PASSWORD")
+    val releaseKeyAlias = releaseSigningValue("KUBMI_RELEASE_KEY_ALIAS")
+    val releaseKeyPassword = releaseSigningValue("KUBMI_RELEASE_KEY_PASSWORD")
+
+    val releaseSigningConfig = if (
+        listOf(
+            releaseStoreFile,
+            releaseStorePassword,
+            releaseKeyAlias,
+            releaseKeyPassword
+        ).all { !it.isNullOrBlank() }
+    ) {
+        signingConfigs.create("release") {
+            storeFile = rootProject.file(requireNotNull(releaseStoreFile))
+            storePassword = releaseStorePassword
+            keyAlias = releaseKeyAlias
+            keyPassword = releaseKeyPassword
         }
+    } else {
+        null
     }
 
     defaultConfig {
@@ -31,7 +58,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            releaseSigningConfig?.let { signingConfig = it }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -86,6 +113,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.gson)
     implementation(libs.jsoup)
+    testImplementation("junit:junit:4.13.2")
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("com.jcraft:jsch:0.1.55")
