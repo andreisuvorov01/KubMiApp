@@ -9,24 +9,30 @@ plugins {
 }
 
 val releaseSigningProperties = Properties().apply {
-    val propertiesFile = rootProject.file("keystore.properties")
-    if (propertiesFile.exists()) {
-        propertiesFile.inputStream().use(::load)
-    }
+    listOf("keystore.properties", "secrets.properties")
+        .map(rootProject::file)
+        .firstOrNull { it.exists() }
+        ?.inputStream()
+        ?.use(::load)
 }
 
-fun releaseSigningValue(name: String): String? =
-    releaseSigningProperties.getProperty(name)
-        ?: System.getenv(name)
+fun releaseSigningValue(environmentName: String, legacyPropertyName: String): String? =
+    System.getenv(environmentName)
+        ?: releaseSigningProperties.getProperty(environmentName)
+        ?: releaseSigningProperties.getProperty(legacyPropertyName)
 
 android {
     namespace = "com.example.kubmi"
     compileSdk = 35
 
-    val releaseStoreFile = releaseSigningValue("KUBMI_RELEASE_STORE_FILE")
-    val releaseStorePassword = releaseSigningValue("KUBMI_RELEASE_STORE_PASSWORD")
-    val releaseKeyAlias = releaseSigningValue("KUBMI_RELEASE_KEY_ALIAS")
-    val releaseKeyPassword = releaseSigningValue("KUBMI_RELEASE_KEY_PASSWORD")
+    val releaseStoreFile =
+        releaseSigningValue("KUBMI_RELEASE_STORE_FILE", "storeFile")
+    val releaseStorePassword =
+        releaseSigningValue("KUBMI_RELEASE_STORE_PASSWORD", "storePassword")
+    val releaseKeyAlias =
+        releaseSigningValue("KUBMI_RELEASE_KEY_ALIAS", "keyAlias")
+    val releaseKeyPassword =
+        releaseSigningValue("KUBMI_RELEASE_KEY_PASSWORD", "keyPassword")
 
     val releaseSigningConfig = if (
         listOf(
@@ -107,16 +113,16 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
-    implementation("androidx.hilt:hilt-work:1.1.0")
+    implementation("androidx.hilt:hilt-work:1.2.0")
     // Required for @HiltWorker codegen (WorkManager + Hilt integration)
-    ksp("androidx.hilt:hilt-compiler:1.1.0")
+    ksp("androidx.hilt:hilt-compiler:1.2.0")
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.gson)
     implementation(libs.jsoup)
-    testImplementation("junit:junit:4.13.2")
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("com.jcraft:jsch:0.1.55")
+    testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)

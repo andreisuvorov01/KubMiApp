@@ -23,5 +23,12 @@ sealed class Screen(val route: String) {
     }
     object About : Screen("about")
     object Admin : Screen("admin")
-    object KioskSettings : Screen("kiosk_settings")
+
+    // Settings hub and category screens
+    object SettingsHub : Screen("settings_hub")
+    object SettingsKioskMode : Screen("settings_kiosk_mode")
+    object SettingsPermissions : Screen("settings_permissions")
+    object SettingsScreensaver : Screen("settings_screensaver")
+    object SettingsData : Screen("settings_data")
+    object SettingsBellSchedule : Screen("settings_bell_schedule")
 }

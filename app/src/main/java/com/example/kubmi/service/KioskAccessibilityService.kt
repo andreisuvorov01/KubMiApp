@@ -23,7 +23,14 @@ class KioskAccessibilityService : AccessibilityService() {
         private val ALLOWED_PACKAGES = setOf(
             "com.example.kubmi",
             "com.android.systemui",
-            "com.android.settings" // Temporarily allowed for enabling permissions
+            "com.android.settings",
+            // GaokeView packages for kiosk coexistence
+            "com.gaokeview.launcher",
+            "com.gaokeview.settings",
+            "com.gaokeview.toolbar",
+            "com.gaokeview.floatmenu",
+            "com.gaokeview.sidebar",
+            "com.gaoke.whiteboard"
         )
         
         @Volatile

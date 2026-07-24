@@ -3,7 +3,14 @@ package com.example.kubmi.kiosk
 import android.view.KeyEvent
 
 object KeyEventBlocker {
-    
+
+    @Volatile
+    var paused: Boolean = false
+
+    /** Пока true — KioskService не пытается вернуть приложение на передний план */
+    @Volatile
+    var foregroundReturnPaused: Boolean = false
+
     private val blockedKeys = setOf(
         KeyEvent.KEYCODE_HOME,
         KeyEvent.KEYCODE_APP_SWITCH,
@@ -32,6 +39,7 @@ object KeyEventBlocker {
     )
     
     fun shouldBlockKey(event: KeyEvent): Boolean {
+        if (paused) return false
         // Блокировка комбинаций клавиш
         if (event.isCtrlPressed || event.isAltPressed || event.isMetaPressed) {
             return when (event.keyCode) {

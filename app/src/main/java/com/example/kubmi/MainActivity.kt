@@ -42,36 +42,30 @@ import com.example.kubmi.presentation.screens.news.NewsViewModel
 import com.example.kubmi.service.KioskService
 import com.example.kubmi.ui.theme.KubMiTheme
 import com.example.kubmi.kiosk.AdvancedKioskManager
+import com.example.kubmi.kiosk.GaokeViewKioskDetector
 import com.example.kubmi.kiosk.KeyEventBlocker
 import com.example.kubmi.util.KioskManager
 import com.example.kubmi.util.SecurePreferences
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
-import java.io.File
-import org.json.JSONObject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     
     @Inject
     lateinit var advancedKioskManager: AdvancedKioskManager
+
+    private val securePreferences by lazy { SecurePreferences(this) }
     
-    private val launcherPrefs by lazy { getSharedPreferences("launcher_prefs", MODE_PRIVATE) }
     private val returnHandler = Handler(Looper.getMainLooper())
 
     // Screensaver related variables
     private val screensaverHandler = Handler(Looper.getMainLooper())
     private val showScreensaver = mutableStateOf(false)
-    private val screensaverRunnable = Runnable {
-        showScreensaver.value = true
-        Log.d(TAG, "#D(run2|B) screensaverRunnable executed, showScreensaver is now: ${showScreensaver.value}")
-    }
+    private val screensaverRunnable = Runnable { showScreensaver.value = true }
 
     companion object {
         private const val TAG = "MainActivity"
-        private const val KEY_LAUNCHER_HELP_SEEN = "launcher_help_seen"
-        private const val OVERLAY_PERMISSION_REQUEST_CODE = 1000
-        private const val SCREENSAVER_DELAY_MS = 1 * 60 * 1000L // 1 minute for testing
     }
 
     @OptIn(ExperimentalTvMaterial3Api::class, ExperimentalAnimationApi::class)
@@ -83,35 +77,19 @@ class MainActivity : ComponentActivity() {
         }
         KioskService.start(this)
 
-        checkOverlayPermission()
-        startOverlayServiceIfAllowed() // Call this here to start the service if permission is already granted
-
-        Log.d(TAG, "#D(run2|F) onCreate called. showScreensaver: ${showScreensaver.value}")
+        startOverlayServiceIfAllowed()
 
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         setContent {
             KubMiTheme {
-                val showLauncherPrompt = rememberSaveable { mutableStateOf(shouldShowLauncherHelp()) }
                 Surface(modifier = Modifier.fillMaxSize(), shape = RectangleShape) {
                     val navController = rememberAnimatedNavController()
                     val newsViewModel: NewsViewModel = hiltViewModel()
-                    val newsList by newsViewModel.newsState.collectAsState()
-                    val pdfSlides by newsViewModel.pdfSlidesState.collectAsState(initial = emptyList())
                     val sftpSlides by newsViewModel.sftpSlidesState.collectAsState()
-                    
-                    val securePrefs = remember { SecurePreferences(this@MainActivity) }
-                    val screensaverMode = remember { securePrefs.getScreensaverMode() }
-                    
-                    val screensaverImages = remember(pdfSlides, sftpSlides, screensaverMode) {
-                        if (screensaverMode == "sftp") {
-                            sftpSlides
-                        } else {
-                            pdfSlides.mapNotNull { it.imageUrl }.distinct()
-                        }
-                    }
+                    val sftpReady by newsViewModel.sftpReadyState.collectAsState()
                     Box(modifier = Modifier.fillMaxSize()) {
                         val startDestination = remember {
-                            if (securePrefs.isPasswordSet()) {
+                            if (securePreferences.isPasswordSet()) {
                                 com.example.kubmi.presentation.navigation.Screen.Main.route
                             } else {
                                 com.example.kubmi.presentation.navigation.Screen.Admin.route
@@ -122,23 +100,9 @@ class MainActivity : ComponentActivity() {
                             startDestination = startDestination
                         )
 
-                        if (showLauncherPrompt.value) {
-                            LauncherSelectionDialog(
-                                onOpenSettings = {
-                                    openHomeSettings()
-                                    markLauncherHelpShown()
-                                    showLauncherPrompt.value = false
-                                },
-                                onDismiss = {
-                                    markLauncherHelpShown()
-                                    showLauncherPrompt.value = false
-                                }
-                            )
-                        }
-
-                        // Display screensaver if active
-                        if (showScreensaver.value) {
-                            ScreensaverContent(imageUrls = screensaverImages)
+                        // Display screensaver only when SFTP slides are ready
+                        if (showScreensaver.value && sftpReady) {
+                            ScreensaverContent(imageUrls = sftpSlides)
                         }
                     }
                 }
@@ -148,48 +112,41 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun resetScreensaverTimer() {
+        val delayMs = securePreferences.getScreensaverDelay() * 1000L
         screensaverHandler.removeCallbacks(screensaverRunnable)
-        screensaverHandler.postDelayed(screensaverRunnable, SCREENSAVER_DELAY_MS)
-        if (showScreensaver.value) {
-            showScreensaver.value = false
-            Log.d(TAG, "#D(run2|E) Screensaver timer reset. Delay: $SCREENSAVER_DELAY_MS ms, showScreensaver: ${showScreensaver.value}")
-        } else {
-            Log.d(TAG, "#D(run2|E) Screensaver timer reset. Delay: $SCREENSAVER_DELAY_MS ms, showScreensaver (was already false): ${showScreensaver.value}")
-        }
+        screensaverHandler.postDelayed(screensaverRunnable, delayMs)
+        if (showScreensaver.value) showScreensaver.value = false
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
         if (showScreensaver.value) {
             showScreensaver.value = false
             resetScreensaverTimer()
-            Log.d(TAG, "#D(run2|H) Touch consumed to dismiss screensaver.")
             return true
         }
         resetScreensaverTimer()
-        Log.d(TAG, "#D(run2|A) dispatchTouchEvent called, screensaver timer reset.")
         return super.dispatchTouchEvent(ev)
     }
 
     override fun onUserInteraction() {
         super.onUserInteraction()
         resetScreensaverTimer()
-        Log.d(TAG, "#D(run2|A) onUserInteraction called, screensaver timer reset.")
     }
 
     override fun onStart() {
         super.onStart()
         KioskService.start(this)
-        Log.d(TAG, "#D(run2|F) onStart called.")
     }
 
     override fun onResume() {
         super.onResume()
-        returnHandler.removeCallbacksAndMessages(null) // Cancel pending bring-to-foreground callbacks to avoid lifecycle bounce
+        returnHandler.removeCallbacksAndMessages(null)
+        KeyEventBlocker.paused = false
+        KeyEventBlocker.foregroundReturnPaused = false
         if (!isTemporaryExitAllowed()) {
             activateKioskMode()
         }
         resetScreensaverTimer()
-        Log.d(TAG, "#D(run2|F) onResume called.")
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -217,22 +174,20 @@ class MainActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (!isTemporaryExitAllowed()) {
+        if (!isTemporaryExitAllowed() && !isSystemLockTaskActive()) {
             bringAppToForeground()
         }
     }
 
     override fun onPause() {
         super.onPause()
-        screensaverHandler.removeCallbacks(screensaverRunnable) // Stop timer when activity is paused
+        screensaverHandler.removeCallbacks(screensaverRunnable)
         scheduleReturnIfNeeded()
-        Log.d(TAG, "#D(run2|F) onPause called, screensaver timer stopped.")
     }
 
     override fun onDestroy() {
         super.onDestroy()
         screensaverHandler.removeCallbacks(screensaverRunnable)
-        Log.d(TAG, "#D(run2|F) onDestroy called, screensaver timer stopped.")
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -240,10 +195,8 @@ class MainActivity : ComponentActivity() {
         if (hasFocus) {
             if (!isTemporaryExitAllowed()) {
                 KioskManager.enableKioskMode(this)
-                Log.d(TAG, "#D(run2|A) Window focus gained, KioskMode enabled.")
             }
         } else {
-            Log.w(TAG, "Window focus lost in kiosk mode; scheduling foreground return")
             scheduleReturnIfNeeded()
         }
     }
@@ -254,12 +207,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun isBlockedKey(keyCode: Int): Boolean = isBlockedKeyCode(keyCode)
-
-    private fun activateKioskMode() {
-        advancedKioskManager.setupFullKioskMode()
-        KioskManager.enableKioskMode(this)
-        Log.d(TAG, "Full kiosk mode activated")
-    }
 
     private fun isBlockedKeyEvent(event: KeyEvent): Boolean {
         if (isBlockedKeyCode(event.keyCode)) return true
@@ -290,25 +237,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun shouldShowLauncherHelp(): Boolean =
-        !advancedKioskManager.isDeviceOwner() &&
-            !launcherPrefs.getBoolean(KEY_LAUNCHER_HELP_SEEN, false)
-
-    private fun markLauncherHelpShown() {
-        launcherPrefs.edit().putBoolean(KEY_LAUNCHER_HELP_SEEN, true).apply()
-    }
-
-    private fun openHomeSettings() {
-        allowTemporaryExit()
-        val intents = listOf(
-            Intent(Settings.ACTION_HOME_SETTINGS),
-            Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
-        )
-        intents.firstOrNull { intent ->
-            intent.resolveActivity(packageManager) != null
-        }?.let { startActivity(it) }
-    }
-
     private fun bringAppToForeground() {
         val intent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -324,14 +252,23 @@ class MainActivity : ComponentActivity() {
 
     private fun scheduleReturnIfNeeded() {
         if (isTemporaryExitAllowed()) return
+        if (KeyEventBlocker.foregroundReturnPaused) return
+        // When the board's own kiosk (Lock Task) is active, it handles return — we don't.
+        if (isSystemLockTaskActive()) return
         returnHandler.removeCallbacksAndMessages(null)
-        // Wait longer before forcing return to foreground to avoid restart loops
         returnHandler.postDelayed({ bringAppToForeground() }, 2000)
-        Log.d(TAG, "#D(run2|G) scheduleReturnIfNeeded called. isTemporaryExitAllowed: ${isTemporaryExitAllowed()}")
     }
 
-    private fun allowTemporaryExit() {
-        KioskService.allowTemporaryExit(this, KioskService.ALLOW_EXIT_WINDOW_MS)
+    private fun isSystemLockTaskActive(): Boolean {
+        return try {
+            val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.lockTaskModeState != android.app.ActivityManager.LOCK_TASK_MODE_NONE
+            } else {
+                @Suppress("DEPRECATION")
+                am.isInLockTaskMode
+            }
+        } catch (_: Exception) { false }
     }
 
     private fun isTemporaryExitAllowed(): Boolean {
@@ -344,9 +281,6 @@ class MainActivity : ComponentActivity() {
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
             startService(Intent(this, OverlayService::class.java))
-            Log.d(TAG, "#D(run2|C) OverlayService started.")
-        } else {
-            Log.d(TAG, "#D(run2|C) OverlayService not started, permission not granted.")
         }
     }
 
@@ -357,45 +291,10 @@ class MainActivity : ComponentActivity() {
                 packageManager.hasSystemFeature("android.hardware.type.television")
     }
 
-    private fun checkOverlayPermission() {
-        if (advancedKioskManager.isDeviceOwner()) {
-            Log.d(TAG, "Overlay permission is not required in Device Owner Lock Task mode.")
-            return
-        }
-        if (isTvDevice()) {
-            Log.d(TAG, "#D(run2|D) Skipping overlay permission check on TV device.")
-            return
-        }
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            )
-            if (intent.resolveActivity(packageManager) != null) {
-                allowTemporaryExit()
-                startActivityForResult(intent, OVERLAY_PERMISSION_REQUEST_CODE)
-                Log.d(TAG, "#D(run2|D) Requesting SYSTEM_ALERT_WINDOW permission.")
-            } else {
-                Log.e(TAG, "#D(run2|D) Settings.ACTION_MANAGE_OVERLAY_PERMISSION not resolvable.")
-            }
-        } else {
-            Log.d(TAG, "#D(run2|D) SYSTEM_ALERT_WINDOW permission already granted or not needed.")
-        }
-    }
-
-
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == OVERLAY_PERMISSION_REQUEST_CODE) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
-                startOverlayServiceIfAllowed()
-                Log.d(TAG, "#D(run2|D) SYSTEM_ALERT_WINDOW permission granted.")
-            } else {
-                Log.d(TAG, "#D(run2|D) SYSTEM_ALERT_WINDOW permission not granted after request.")
-            }
-        }
+    private fun activateKioskMode() {
+        advancedKioskManager.setupFullKioskMode()
+        KioskManager.enableKioskMode(this)
+        Log.d(TAG, "Kiosk mode activated")
     }
 }
 

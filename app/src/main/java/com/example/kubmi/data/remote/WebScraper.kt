@@ -90,7 +90,7 @@ class WebScraper @Inject constructor() {
         return Jsoup.connect(url)
             .followRedirects(true)
             .ignoreContentType(true)
-            .timeout(30000)
+            .timeout(30_000)
             .maxBodySize(0)
             .referrer("https://kubmi.ru/")
             .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")

@@ -9,6 +9,7 @@ import com.example.kubmi.domain.repository.AboutRepository
 import com.example.kubmi.domain.repository.NewsRepository
 import com.example.kubmi.domain.repository.ScheduleRepository
 import com.example.kubmi.domain.model.News
+import com.example.kubmi.domain.model.NewsContentBlock
 import com.example.kubmi.domain.model.ScheduleIndexEntry
 import com.example.kubmi.domain.model.AboutPageContent
 import coil.imageLoader
@@ -133,6 +134,29 @@ class DataSyncWorker @AssistedInject constructor(
                     newsRepository.refreshNewsArticle(news.id)
                 } catch (e: Exception) {
                     Timber.e(e, "Failed to sync article detail: ${news.id}")
+                }
+            }
+        }.awaitAll()
+
+        // Preload article images into Coil's disk cache for the latest 5 articles
+        val context = applicationContext
+        val latestNews = newsRepository.getAllNewsSync().take(5)
+        latestNews.flatMap { news ->
+            val urls = mutableListOf<String>()
+            if (news.imageUrl?.startsWith("http") == true) urls.add(news.imageUrl!!)
+            urls.addAll(news.contentBlocks.filter { it.type == NewsContentBlock.TYPE_IMAGE && it.imageUrl?.startsWith("http") == true }.mapNotNull { it.imageUrl })
+            urls
+        }.map { url ->
+            async {
+                try {
+                    val request = ImageRequest.Builder(context)
+                        .data(url)
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .memoryCachePolicy(CachePolicy.DISABLED)
+                        .build()
+                    context.imageLoader.execute(request)
+                } catch (e: Exception) {
+                    Timber.e(e, "Failed to pre-fetch article image: $url")
                 }
             }
         }.awaitAll()

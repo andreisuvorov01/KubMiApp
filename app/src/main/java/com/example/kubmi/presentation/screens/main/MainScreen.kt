@@ -7,6 +7,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,9 +22,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
@@ -35,6 +38,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -42,7 +46,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,13 +54,13 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -67,22 +70,16 @@ import androidx.navigation.NavController
 import com.example.kubmi.R
 import com.example.kubmi.domain.model.News
 import com.example.kubmi.presentation.navigation.Screen
+import com.example.kubmi.presentation.components.BellScheduleCard
+import com.example.kubmi.presentation.components.CurrentDateTime
 import com.example.kubmi.ui.components.CoilImage
 import com.example.kubmi.ui.theme.KubMiAccentRed
 import com.example.kubmi.ui.theme.KubMiAccentRedDark
 import com.example.kubmi.ui.theme.KubMiCtaBlue
 import com.example.kubmi.ui.theme.KubMiCtaBlueDark
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlin.math.abs
 import java.io.File
 import org.json.JSONObject
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.animateScrollBy
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -106,6 +103,7 @@ fun MainScreen(navController: NavController) {
                     )
                 },
                 actions = {
+                    CurrentDateTime()
                     IconButton(onClick = { viewModel.refreshNews() }) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
@@ -127,14 +125,24 @@ fun MainScreen(navController: NavController) {
             )
         }
     ) { paddingValues ->
-        LazyColumn(
+        PullToRefreshBox(
+            isRefreshing = refreshState is RefreshState.Loading,
+            onRefresh = { viewModel.refreshNews() },
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+            val bellText by viewModel.bellScheduleText.collectAsState()
+            val scheduleSectionTitle by viewModel.mainScreenTitle.collectAsState()
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
             item {
                 PanelSectionTitle(text = stringResource(R.string.news))
             }
@@ -192,20 +200,32 @@ fun MainScreen(navController: NavController) {
             }
 
             item {
-                Column(
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     ScheduleCtaTile(
                         title = stringResource(R.string.student_schedule),
                         gradient = Brush.horizontalGradient(listOf(KubMiCtaBlue, KubMiCtaBlueDark)),
-                        onClick = { navController.navigate(Screen.StudentSchedule.route) }
+                        onClick = { navController.navigate(Screen.StudentSchedule.route) },
+                        modifier = Modifier.weight(1f)
                     )
                     ScheduleCtaTile(
                         title = stringResource(R.string.teacher_schedule),
                         gradient = Brush.horizontalGradient(listOf(KubMiAccentRed, KubMiAccentRedDark)),
-                        onClick = { navController.navigate(Screen.TeacherSchedule.route) }
+                        onClick = { navController.navigate(Screen.TeacherSchedule.route) },
+                        modifier = Modifier.weight(1f)
                     )
+                }
+            }
+
+            // Bell Schedule section
+            if (bellText.isNotBlank()) {
+                item {
+                    PanelSectionTitle(text = scheduleSectionTitle.ifBlank { stringResource(R.string.bell_schedule_title) })
+                }
+                item {
+                    BellScheduleCard(text = bellText)
                 }
             }
 
@@ -220,105 +240,262 @@ fun MainScreen(navController: NavController) {
                     onClick = { navController.navigate(Screen.About.route) }
                 )
             }
+            item {
+                PanelSectionTitle(text = stringResource(R.string.contacts))
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Phone,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = stringResource(R.string.contact_deanery),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = stringResource(R.string.contact_deanery_phone),
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Phone,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = stringResource(R.string.contact_education_department),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = stringResource(R.string.contact_education_department_phone),
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Phone,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = stringResource(R.string.contact_vice_dean),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = stringResource(R.string.contact_vice_dean_phone),
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Phone,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = stringResource(R.string.contact_accounting),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = stringResource(R.string.contact_accounting_phone),
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.LocationOn,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = stringResource(R.string.panel_address_value),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.LocationOn,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = stringResource(R.string.panel_address_value_2),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    }
+                }
+            }
         }
+    }
+    }
     }
 }
 
 @Composable
 private fun NewsCarousel(news: List<News>, navController: NavController) {
-    val carouselNews = remember(news) { news.take(4) }
+    val carouselNews = remember(news) { news.take(6) }
     val listState = rememberLazyListState()
     val flingBehavior = rememberSnapFlingBehavior(lazyListState = listState)
-    var isUserScrolling by remember { mutableStateOf(false) }
-    var pulseIndex by remember { mutableStateOf(0) }
-    
-    val density = LocalDensity.current
+    var activeIndex by remember { mutableStateOf(0) }
     val configuration = LocalConfiguration.current
-    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
-    val cardWidthPx = with(density) { 280.dp.toPx() }
-    // Offset to center the card: (Screen - Card) / 2
-    val centerOffsetPx = (screenWidthPx - cardWidthPx) / 2
+    val cardHeightPx = configuration.screenHeightDp * 0.22f
+    val cardHeight = cardHeightPx.dp.coerceIn(150.dp, 210.dp)
+    val cardWidth = (cardHeight.value * 1.36f).dp
+    val imageHeight = (cardHeight.value * 0.55f).dp
 
-    val pulseSequence = remember(carouselNews) {
-        val count = carouselNews.size
-        if (count <= 1) emptyList()
-        else {
-            val forward = (0 until count).toList()
-            val backward = (count - 2 downTo 1).toList()
-            forward + backward // 0, 1, 2, 3, 2, 1
-        }
+    // Синхронизация dot-индикатора с центральной карточкой
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val visible = listState.layoutInfo.visibleItemsInfo
+            if (visible.isEmpty()) return@snapshotFlow 0
+            val viewportCenter = (listState.layoutInfo.viewportStartOffset + listState.layoutInfo.viewportEndOffset) / 2
+            visible.minByOrNull { kotlin.math.abs((it.offset + it.size / 2) - viewportCenter) }?.index ?: 0
+        }.collect { centerIdx -> activeIndex = centerIdx }
     }
 
-    // Switch active item cycle
-    LaunchedEffect(pulseSequence) {
-        if (pulseSequence.isEmpty()) return@LaunchedEffect
-        var position = 0
-        while (isActive) {
-            delay(4000)
-            if (!isUserScrolling) {
-                position = (position + 1) % pulseSequence.size
-                pulseIndex = pulseSequence[position]
+    // Автопрокрутка карусели
+    LaunchedEffect(listState, carouselNews.size) {
+        while (carouselNews.size > 1) {
+            delay(5000)
+            if (!listState.isScrollInProgress) {
+                val next = (activeIndex + 1) % carouselNews.size
+                listState.animateScrollToItem(next)
             }
         }
     }
 
-    // Smooth scroll to the active item
-    LaunchedEffect(pulseIndex) {
-        if (!isUserScrolling && carouselNews.isNotEmpty()) {
-            // Keep first item at the edge, center others
-            val targetOffset = if (pulseIndex == 0) 0 else -(centerOffsetPx.toInt())
-            listState.animateScrollToItem(pulseIndex, targetOffset)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            state = listState,
+            flingBehavior = flingBehavior,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp)
+        ) {
+            itemsIndexed(items = carouselNews, key = { _, item -> item.id }) { index, newsItem ->
+                NewsCard(
+                    news = newsItem,
+                    navController = navController,
+                    highlighted = activeIndex == index,
+                    cardWidth = cardWidth,
+                    cardHeight = cardHeight,
+                    imageHeight = imageHeight
+                )
+            }
         }
-    }
 
-    // Track user interaction
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress }.collect { isUserScrolling = it }
-    }
-
-    LazyRow(
-        modifier = Modifier.fillMaxWidth(),
-        state = listState,
-        flingBehavior = flingBehavior,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp)
-    ) {
-        itemsIndexed(items = carouselNews, key = { _, item -> item.id }) { index, newsItem ->
-            val isFocused = pulseIndex == index
-            NewsCard(news = newsItem, navController = navController, highlighted = isFocused)
+        // Индикаторы-точки
+        if (carouselNews.size > 1) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                carouselNews.forEachIndexed { index, _ ->
+                    val isActive = activeIndex == index
+                    val dotSize by animateFloatAsState(
+                        targetValue = if (isActive) 10f else 6f,
+                        animationSpec = tween(300),
+                        label = "dotSize"
+                    )
+                    val dotAlpha by animateFloatAsState(
+                        targetValue = if (isActive) 1f else 0.4f,
+                        animationSpec = tween(300),
+                        label = "dotAlpha"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 3.dp)
+                            .size(dotSize.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = dotAlpha))
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-fun NewsCard(news: News, navController: NavController, highlighted: Boolean = false) {
+fun NewsCard(
+    news: News,
+    navController: NavController,
+    highlighted: Boolean = false,
+    cardWidth: androidx.compose.ui.unit.Dp = 300.dp,
+    cardHeight: androidx.compose.ui.unit.Dp = 220.dp,
+    imageHeight: androidx.compose.ui.unit.Dp = 130.dp
+) {
     val targetScale by animateFloatAsState(
-        targetValue = if (highlighted) 1.08f else 1f,
+        targetValue = if (highlighted) 1.05f else 0.97f,
         label = "newsCardScale",
-        animationSpec = tween(durationMillis = 600, easing = LinearOutSlowInEasing)
+        animationSpec = tween(durationMillis = 400, easing = LinearOutSlowInEasing)
+    )
+    val targetElevation by animateFloatAsState(
+        targetValue = if (highlighted) 8f else 2f,
+        label = "newsCardElevation",
+        animationSpec = tween(durationMillis = 400)
     )
     val targetAlpha by animateFloatAsState(
-        targetValue = if (highlighted) 1f else 0.85f,
+        targetValue = if (highlighted) 1f else 0.82f,
         label = "newsCardAlpha",
-        animationSpec = tween(durationMillis = 600)
+        animationSpec = tween(durationMillis = 400)
     )
 
     Card(
         onClick = { navController.navigate(Screen.NewsDetail.createRoute(news.id)) },
         modifier = Modifier
-            .width(280.dp)
-            .height(200.dp)
+            .width(cardWidth)
+            .height(cardHeight)
             .graphicsLayer(
                 scaleX = targetScale,
                 scaleY = targetScale
             )
             .alpha(targetAlpha),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = targetElevation.dp),
+        border = if (highlighted)
+            BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
+        else null
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // Display news image if available
+        Column(modifier = Modifier.fillMaxSize()) {
             news.imageUrl?.let { imageUrl ->
                 CoilImage(
                     imageUrl = imageUrl,
@@ -326,10 +503,9 @@ fun NewsCard(news: News, navController: NavController, highlighted: Boolean = fa
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(120.dp)
+                        .height(imageHeight)
                 )
             }
-
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -339,14 +515,6 @@ fun NewsCard(news: News, navController: NavController, highlighted: Boolean = fa
                     text = news.title,
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = news.description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -354,7 +522,7 @@ fun NewsCard(news: News, navController: NavController, highlighted: Boolean = fa
                 Text(
                     text = news.date,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
@@ -377,13 +545,34 @@ private fun ScheduleCtaTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var isFocused by remember { mutableStateOf(false) }
+
+    val targetScale by animateFloatAsState(
+        targetValue = if (isFocused) 1.04f else 1f,
+        animationSpec = tween(durationMillis = 250, easing = LinearOutSlowInEasing),
+        label = "ctaScale"
+    )
+    val targetElevation by animateFloatAsState(
+        targetValue = if (isFocused) 8f else 2f,
+        animationSpec = tween(durationMillis = 250),
+        label = "ctaElevation"
+    )
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(64.dp),
+            .height(64.dp)
+            .graphicsLayer(
+                scaleX = targetScale,
+                scaleY = targetScale
+            )
+            .onFocusChanged { isFocused = it.isFocused },
         shape = MaterialTheme.shapes.medium,
-        shadowElevation = 2.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shadowElevation = targetElevation.dp,
+        border = if (isFocused)
+            BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        else
+            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         color = MaterialTheme.colorScheme.surface,
         onClick = onClick
     ) {

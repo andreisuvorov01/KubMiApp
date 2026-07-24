@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">КубМИ приложение для панелей</string>
+    <string name="app_name">Кубанский медицинский институт</string>
     <string name="back">Назад</string>
     <string name="refresh">Обновить</string>
     <string name="settings">Настройки</string>
@@ -33,7 +33,6 @@
     <string name="email">Email: info@kubmi.ru</string>
     <string name="admin_set_password_title">Установка пароля администратора</string>
     <string name="admin_enter_new_password">Введите новый пароль:</string>
-    <string name="confirm_password">Подтвердите пароль</string>
     <string name="set_password">Установить пароль</string>
     <string name="admin_login_title">Вход в админ-панель</string>
     <string name="admin_enter_password">Введите пароль:</string>
@@ -45,6 +44,7 @@
     <string name="clear_cache">Очистить кэш</string>
     <string name="exit_app">Выход из приложения</string>
     <string name="password">Пароль</string>
+    <string name="confirm_password">Подтвердите пароль</string>
     <string name="error">Ошибка</string>
     <string name="news_image_desc">Изображение новости: %1$s</string>
     <string name="news_image_description">Изображение новости: %1$s</string>
@@ -69,9 +69,21 @@
     <!-- Contact values (match kubmi.ru panel page) -->
     <string name="panel_phone_value">+7 (861) 991-42-88</string>
     <string name="panel_phone_tel">+78619914288</string>
-    <string name="panel_address_value">350015 г. Краснодар, ул. Буденного, 198</string>
+    <string name="panel_address_value">г. Краснодар, ул. Буденного, 198</string>
+    <string name="panel_address_value_2">г. Краснодар, ул. Гаражная, 77</string>
     <string name="email_value">info@kubmi.ru</string>
+    <string name="contact_deanery">Деканат</string>
+    <string name="contact_deanery_phone">+7 (861) 991-22-88</string>
+    <string name="contact_education_department">Учебно-метод отдел</string>
+    <string name="contact_education_department_phone">+7 (861) 991-22-88</string>
+    <string name="contact_vice_dean">Зам. декана по ВР</string>
+    <string name="contact_vice_dean_phone">+7 (861) 991-42-88</string>
+    <string name="contact_accounting">Бухгалтерия</string>
+    <string name="contact_accounting_phone">+7 (861) 991-30-03</string>
     <string name="no_schedule_found">Расписание не найдено</string>
+    <string name="search_groups">Поиск групп...</string>
+    <string name="search_teachers">Поиск преподавателей...</string>
+    <string name="clear">Очистить</string>
     <string name="time">Время</string>
     <string name="subject">Предмет</string>
     <string name="type">Тип</string>
@@ -93,7 +105,7 @@
     <string name="admin_exit_cancel">Отмена</string>
     <string name="admin_exit_error">Неверный пароль</string>
     <string name="admin_exit_success">Выход разрешён на 2 минуты</string>
-    <string name="admin_exit_allow">Выйти из kiosk-режима (2 мин)</string>
+    <string name="admin_exit_allow">Разрешить выход (2 мин)</string>
     <string name="device_admin_enabled">Права администратора устройства включены</string>
     <string name="device_admin_disabled">Права администратора устройства отключены</string>
     
@@ -130,20 +142,59 @@
     
     <!-- Screensaver Settings -->
     <string name="screensaver_settings_title">Настройки экранной заставки</string>
+    <string name="show_upload_instructions">Показать инструкцию по загрузке файлов</string>
+    <string name="hide_instructions">Скрыть инструкцию</string>
+
     <string name="screensaver_mode_label">Источник изображений для заставки:</string>
     <string name="screensaver_mode_news">Новости с сайта</string>
     <string name="screensaver_mode_news_desc">Использовать PDF из раздела "ЧС" на сайте института</string>
     <string name="screensaver_mode_sftp">Сервер SFTP</string>
     <string name="screensaver_mode_sftp_desc">Загружать изображения с удалённого сервера через SFTP</string>
-    <string name="show_upload_instructions">Показать инструкцию по загрузке файлов</string>
-    <string name="hide_instructions">Скрыть инструкцию</string>
+
+    <string name="sftp_upload_instructions_title">Как загрузить файлы для заставки:</string>
     
-    <string name="sftp_upload_instructions_title">Как загрузить файлы на SFTP сервер:</string>
-    <string name="sftp_server_info">Сервер: 46.254.17.172\nПользователь: root\nПароль: eS8h882JP9\nПапка: /pdf</string>
+    <string name="sftp_instructions_windows">Windows: Используйте WinSCP или FileZilla.\n1. Откройте программу\n2. Подключитесь к серверу (данные уточните у администратора)\n3. Загрузите PDF файлы в папку /pdf в корне сервера</string>
     
-    <string name="sftp_instructions_windows">Windows: Используйте WinSCP или FileZilla.\n1. Откройте программу\n2. Введите данные сервера\n3. Подключитесь и загрузите PDF файлы в папку /pdf</string>
-    
-    <string name="sftp_instructions_macos_linux">macOS/Linux: Используйте команду в терминале:\nsftp root@46.254.17.172\nПосле входа: cd /pdf, затем: put вашфайл.pdf</string>
+    <string name="sftp_instructions_macos_linux">macOS/Linux: Используйте команду в терминале:\nsftp пользователь@сервер\nПосле входа: cd /pdf, затем: put вашфайл.pdf</string>
     
     <string name="sftp_instructions_note">Примечание: Приложение автоматически конвертирует PDF файлы в изображения для показа в заставке. Загружайте только PDF файлы.</string>
+    <string name="sftp_server_info">Сервер: 46.254.17.172\nПользователь: root\nПароль: eS8h882JP9\nПапка: /pdf</string>
+
+    <!-- Settings Hub Categories -->
+    <string name="settings_category_kiosk">Режим киоска</string>
+    <string name="settings_category_kiosk_desc">Включение/отключение киоска, уровень защиты</string>
+    <string name="settings_category_permissions">Разрешения</string>
+    <string name="settings_category_permissions_desc">Управление разрешениями для режима киоска</string>
+    <string name="settings_category_screensaver">Экранная заставка</string>
+    <string name="settings_category_screensaver_desc">Время ожидания, инструкция по загрузке</string>
+    <string name="settings_category_data">Синхронизация данных</string>
+    <string name="settings_category_data_desc">Интервал обновления, API endpoint</string>
+    <string name="settings_category_bell_schedule">Расписание звонков</string>
+    <string name="settings_category_bell_schedule_desc">Настройка текста расписания на главном экране</string>
+    <string name="settings_category_main_screen_text">Текст главного окна</string>
+    <string name="settings_category_main_screen_text_desc">Заголовок и текст раздела на главном экране</string>
+    
+    <!-- Settings Screen Titles -->
+    <string name="settings_hub_title">Настройки</string>
+    <string name="kiosk_mode_screen_title">Режим киоска</string>
+    <string name="permissions_screen_title">Разрешения</string>
+    <string name="data_sync_screen_title">Синхронизация данных</string>
+    
+    <!-- Data Sync Settings -->
+    <string name="bell_schedule_screen_title">Расписание звонков</string>
+    <string name="data_refresh_interval">Интервал обновления данных</string>
+    <string name="data_refresh_interval_desc">Как часто обновлять расписание и новости (в минутах)</string>
+    <string name="api_endpoint">Адрес сервера (API)</string>
+    <string name="auto_start_enabled">Автозапуск приложения</string>
+    <string name="auto_start_enabled_desc">Автоматически запускать приложение при включении устройства</string>
+    <string name="minutes_format">%1$d мин</string>
+    <string name="save">Сохранить</string>
+
+    <!-- Bell Schedule Text -->
+    <string name="bell_schedule_title">Расписание звонков</string>
+    <string name="bell_schedule_hint">Текст для отображения на главном экране (например, расписание пар). Оставьте пустым, чтобы скрыть секцию.</string>
+    <string name="main_screen_text_title">Текст главного окна</string>
+    <string name="main_screen_section_title_label">Заголовок раздела</string>
+    <string name="main_screen_section_title_hint">Заголовок блока с текстом на главном экране. Оставьте пустым для значения по умолчанию.</string>
+    <string name="main_screen_content_label">Текст раздела</string>
 </resources>

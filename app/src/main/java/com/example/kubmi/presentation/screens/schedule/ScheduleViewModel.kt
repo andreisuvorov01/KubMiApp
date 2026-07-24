@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import timber.log.Timber
 import android.util.Log
 import javax.inject.Inject
@@ -43,19 +44,15 @@ class ScheduleViewModel @Inject constructor(
 
     fun loadAllGroups() {
         Log.i("KubMI_Schedule", "loadAllGroups() called")
-        // #region agent log
         Log.d("KubMI_Debug", "[E] loadAllGroups: Function called")
-        // #endregion
         viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
             Log.i("KubMI_Schedule", "loadAllGroups() coroutine started")
-            // #region agent log
             Log.d("KubMI_Debug", "[E] loadAllGroups: Coroutine started, calling repository")
-            // #endregion
             try {
                 val table = scheduleRepository.getStudentGroupsTable()
-                // #region agent log
                 Log.d("KubMI_Debug", "[E] loadAllGroups: Repository returned - headers=${table.headers.size}, rows=${table.rows.size}")
-                // #endregion
                 Log.i("KubMI_Schedule", "getStudentGroupsTable returned: headers=${table.headers.size}, rows=${table.rows.size}")
                 if (table.headers.isEmpty() || table.rows.isEmpty()) {
                     Log.w("KubMI_Schedule", "Student groups table is empty; falling back to mock 1x6 row")
@@ -65,28 +62,29 @@ class ScheduleViewModel @Inject constructor(
                     Log.i("KubMI_Schedule", "Student groups table loaded: headers=${table.headers.size}, rows=${table.rows.size}, nonEmptyCells=$nonEmpty")
                     _groupsState.value = table
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("KubMI_Schedule", "Error loading groups: ${e.message}", e)
+                _error.value = e.message ?: "Неизвестная ошибка"
                 _groupsState.value = getMockGroupsTable()
+            } finally {
+                _isLoading.value = false
             }
         }
     }
 
     fun loadAllTeachers() {
         Log.i("KubMI_Schedule", "loadAllTeachers() called")
-        // #region agent log
         Log.d("KubMI_Debug", "[E] loadAllTeachers: Function called")
-        // #endregion
         viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
             Log.i("KubMI_Schedule", "loadAllTeachers() coroutine started")
-            // #region agent log
             Log.d("KubMI_Debug", "[E] loadAllTeachers: Coroutine started, calling repository")
-            // #endregion
             try {
                 val teachers = scheduleRepository.getAllTeachers()
-                // #region agent log
                 Log.d("KubMI_Debug", "[E] loadAllTeachers: Repository returned ${teachers.size} teachers")
-                // #endregion
                 Log.i("KubMI_Schedule", "getAllTeachers returned: ${teachers.size} entries")
                 if (teachers.isEmpty()) {
                     Log.w("KubMI_Schedule", "Teachers list is empty; falling back to mock")
@@ -94,9 +92,14 @@ class ScheduleViewModel @Inject constructor(
                 } else {
                     _teachersState.value = teachers
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e("KubMI_Schedule", "Error loading teachers: ${e.message}", e)
+                _error.value = e.message ?: "Неизвестная ошибка"
                 _teachersState.value = getMockTeachers()
+            } finally {
+                _isLoading.value = false
             }
         }
     }
@@ -111,6 +114,8 @@ class ScheduleViewModel @Inject constructor(
             try {
                 val data = refreshFromWeb()
                 _scheduleState.value = data
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _error.value = e.message ?: "Неизвестная ошибка"
                 Timber.e(e, "Error refreshing schedule")

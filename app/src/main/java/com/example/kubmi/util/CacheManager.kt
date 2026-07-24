@@ -22,7 +22,7 @@ class CacheManager @Inject constructor(
     
     fun clearImageCache() {
         try {
-            val imageCacheDir = File(context.cacheDir, "images")
+            val imageCacheDir = File(context.cacheDir, "image_cache")
             if (imageCacheDir.exists()) {
                 deleteDir(imageCacheDir)
             }

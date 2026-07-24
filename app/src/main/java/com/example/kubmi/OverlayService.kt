@@ -9,6 +9,7 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -72,10 +73,10 @@ class OverlayService : Service() {
             WindowManager.LayoutParams.MATCH_PARENT,
             1, // Only 1 pixel height to avoid blocking UI
             layoutFlag,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or // Make it not touchable
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or  // Must have: prevents focus steal → white flash
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-            PixelFormat.TRANSLUCENT
+            PixelFormat.TRANSPARENT
         )
 
         params.gravity = Gravity.TOP or Gravity.START
@@ -83,6 +84,13 @@ class OverlayService : Service() {
         params.y = 0
 
         mWindowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Log.w(tag, "SYSTEM_ALERT_WINDOW not granted — stopping overlay service")
+            stopSelf()
+            return
+        }
+
         mWindowManager?.addView(mOverlayView, params)
     }
 
@@ -102,9 +110,11 @@ class OverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (mOverlayView != null) {
-            mWindowManager?.removeView(mOverlayView)
-            mOverlayView = null
+        val view = mOverlayView
+        if (view != null && view.windowToken != null) {
+            runCatching { mWindowManager?.removeView(view) }
         }
+        mOverlayView = null
+        super.onDestroy()
     }
 }

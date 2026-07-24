@@ -16,8 +16,8 @@ import android.os.UserManager
 import android.provider.Settings
 import android.util.Log
 import com.example.kubmi.MainActivity
-import com.example.kubmi.service.KioskService
 import com.example.kubmi.receiver.DeviceAdminReceiver
+import com.example.kubmi.service.KioskService
 import com.example.kubmi.service.KioskAccessibilityService
 import com.example.kubmi.service.KioskJobService
 import com.example.kubmi.util.AdminLogger
@@ -72,6 +72,12 @@ class AdvancedKioskManager @Inject constructor(
      * Должна быть вызвана при запуске приложения
      */
     fun setupFullKioskMode() {
+        if (GaokeViewKioskDetector.isGaokeViewKioskActive(context)) {
+            Log.i(TAG, "GaokeView kiosk detected — using compatibility mode")
+            setupCompatibilityMode()
+            return
+        }
+
         if (!isDeviceOwner()) {
             Log.w(TAG, "Not Device Owner - limited kiosk capabilities")
             setupLimitedKioskMode()
@@ -103,6 +109,14 @@ class AdvancedKioskManager @Inject constructor(
     /**
      * Базовая защита без Device Owner (для обычных приложений)
      */
+    fun setupCompatibilityMode() {
+        Log.d(TAG, "Setting up COMPATIBILITY mode with GaokeView kiosk")
+        startProtectionServices()
+        setUserRestrictions()
+        applyNetworkRestrictions()
+        Log.i(TAG, "Compatibility mode active: services + restrictions only")
+    }
+
     private fun setupLimitedKioskMode() {
         Log.d(TAG, "Setting up LIMITED kiosk mode (non-Device Owner)")
 
@@ -122,18 +136,17 @@ class AdvancedKioskManager @Inject constructor(
             }
         }
 
-        /**
-         * Назначает MainActivity постоянным HOME для полностью управляемого устройства.
-         * Во время авторизованного выхода эта привязка временно снимается.
-         */
         private fun configurePersistentHome() {
             try {
                 val filter = IntentFilter(Intent.ACTION_MAIN).apply {
                     addCategory(Intent.CATEGORY_HOME)
                     addCategory(Intent.CATEGORY_DEFAULT)
                 }
-                val activity = ComponentName(context, MainActivity::class.java)
-                dpm.addPersistentPreferredActivity(adminComponent, filter, activity)
+                dpm.addPersistentPreferredActivity(
+                    adminComponent,
+                    filter,
+                    ComponentName(context, MainActivity::class.java)
+                )
                 Log.d(TAG, "✓ Persistent HOME configured")
             } catch (e: Exception) {
                 Log.e(TAG, "✗ Failed to configure persistent HOME", e)
@@ -328,7 +341,7 @@ class AdvancedKioskManager @Inject constructor(
          */
         private fun configurePowerManagement() {
             try {
-                // Не разрешаем системное меню долгого нажатия Power и другие SystemUI-функции.
+                // Не разрешаем меню Power и остальные SystemUI-функции.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     dpm.setLockTaskFeatures(
                         adminComponent,
@@ -399,17 +412,14 @@ class AdvancedKioskManager @Inject constructor(
                     }
                 }
 
-                /**
-                 * Временно снимает kiosk-защиту для уже авторизованного администратора.
-                 * Watchdog продолжает работать и вернёт приложение после истечения окна.
-                 */
                 fun beginAdminMaintenance(activity: Activity, durationMs: Long) {
                     KioskService.allowTemporaryExit(context, durationMs)
+                    KeyEventBlocker.paused = true
+                    KeyEventBlocker.foregroundReturnPaused = true
                     AdminLogger(context).logAction(
                         "KIOSK_MAINTENANCE_STARTED",
                         "duration_ms=$durationMs"
                     )
-
                     stopLockTask(activity)
 
                     if (isDeviceOwner()) {
@@ -418,16 +428,10 @@ class AdvancedKioskManager @Inject constructor(
                         }.onFailure {
                             Log.w(TAG, "Could not enable status bar for admin maintenance", it)
                         }
-
                         unhideAdminApps()
                     }
                 }
 
-                /**
-                 * Полный администраторский выход: снимает постоянный HOME и открывает
-                 * системные настройки. При следующем запуске kiosk-конфигурация
-                 * применяется снова.
-                 */
                 fun exitKioskForAdmin(
                     activity: Activity,
                     durationMs: Long = KioskService.ADMIN_EXIT_WINDOW_MS
@@ -452,28 +456,26 @@ class AdvancedKioskManager @Inject constructor(
                         addCategory(Intent.CATEGORY_HOME)
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
-                    val exitIntent = if (
-                        settingsIntent.resolveActivity(context.packageManager) != null
-                    ) {
-                        settingsIntent
-                    } else {
-                        homeIntent
-                    }
+                    val exitIntent =
+                        if (settingsIntent.resolveActivity(context.packageManager) != null) {
+                            settingsIntent
+                        } else {
+                            homeIntent
+                        }
 
                     activity.startActivity(exitIntent)
                     activity.finishAndRemoveTask()
                 }
 
                 private fun unhideAdminApps() {
-                    val packages = listOf(
+                    listOf(
                         "com.android.settings",
                         "com.google.android.tvlauncher",
                         "com.google.android.leanbacklauncher",
                         "com.android.launcher",
                         "com.android.launcher2",
                         "com.android.launcher3"
-                    )
-                    packages.forEach { packageName ->
+                    ).forEach { packageName ->
                         runCatching {
                             dpm.setApplicationHidden(adminComponent, packageName, false)
                         }.onFailure {
@@ -522,6 +524,7 @@ class AdvancedKioskManager @Inject constructor(
                         "VIEWSONIC" -> configureForViewSonic()
                         "SMART" -> configureForSmartBoard()
                         "ANDROID_TV" -> hideAndroidTvUI()
+                        "GAOKEVIEW" -> configureForGaokeView()
                         else -> Log.d(TAG, "Generic OEM configuration applied")
                     }
                 }
@@ -594,6 +597,10 @@ class AdvancedKioskManager @Inject constructor(
                     } catch (e: Exception) {
                         Log.v(TAG, "SMART whiteboard not found or cannot be hidden")
                     }
+                }
+
+                private fun configureForGaokeView() {
+                    Log.d(TAG, "GaokeView panel detected — packages are NOT hidden for coexistence")
                 }
 
     /**

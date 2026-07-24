@@ -9,8 +9,7 @@ object DebugLogger {
     private const val TAG = "KioskDebug"
     
     fun log(hypothesisId: String, location: String, message: String, data: Map<String, Any?> = emptyMap()) {
-        val dataStr = data.entries.joinToString(", ") { "${it.key}=${it.value}" }
-        Log.d(TAG, "[$hypothesisId] $location: $message | $dataStr")
+        // logging disabled
     }
     
     fun clear() {

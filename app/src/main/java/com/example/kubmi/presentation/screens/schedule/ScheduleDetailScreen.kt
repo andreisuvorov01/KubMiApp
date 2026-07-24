@@ -1,11 +1,9 @@
 package com.example.kubmi.presentation.screens.schedule
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -24,6 +22,10 @@ import com.example.kubmi.R
 import com.example.kubmi.domain.model.WeeklyScheduleData
 import com.example.kubmi.domain.model.ScheduleTableRow
 import com.example.kubmi.domain.model.ScheduleCellContent
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -156,29 +158,77 @@ fun ScheduleDetailScreen(
                                 maxCols >= 8 -> 120.dp
                                 else -> 140.dp
                             }
+                            val ruDayNames = remember {
+                                mapOf(
+                                    "понедельник" to DayOfWeek.MONDAY, "пн" to DayOfWeek.MONDAY,
+                                    "вторник" to DayOfWeek.TUESDAY, "вт" to DayOfWeek.TUESDAY,
+                                    "среда" to DayOfWeek.WEDNESDAY, "ср" to DayOfWeek.WEDNESDAY,
+                                    "четверг" to DayOfWeek.THURSDAY, "чт" to DayOfWeek.THURSDAY,
+                                    "пятница" to DayOfWeek.FRIDAY, "пт" to DayOfWeek.FRIDAY,
+                                    "суббота" to DayOfWeek.SATURDAY, "сб" to DayOfWeek.SATURDAY,
+                                    "воскресенье" to DayOfWeek.SUNDAY, "вс" to DayOfWeek.SUNDAY
+                                )
+                            }
+                            val today = remember { LocalDate.now() }
+                            val isCurrentWeek = remember(weeklySchedule) {
+                                isDateInWeek(weeklySchedule.weekTitle, today)
+                            }
+                            val todayRowIndex = remember(weeklySchedule, ruDayNames, today, isCurrentWeek) {
+                                if (!isCurrentWeek) return@remember -1
+                                val normalizedToday = today.dayOfWeek.getDisplayName(
+                                    java.time.format.TextStyle.FULL, Locale("ru")
+                                ).lowercase(Locale.ROOT)
+                                weeklySchedule.rows.indexOfFirst { row ->
+                                    row.cells.any { cell ->
+                                        val text = cell.text.trim().lowercase(Locale.ROOT)
+                                        ruDayNames.any { (name, day) ->
+                                            day == today.dayOfWeek && text.startsWith(name)
+                                        }
+                                    }
+                                }
+                            }
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .horizontalScroll(rememberScrollState())
                             ) {
+                                val spannedColumns = mutableMapOf<Int, Int>()
                                 weeklySchedule.rows.forEachIndexed { rowIndex, row ->
                                     Row(
-                                        // Important: inside a horizontalScroll container, width constraints can be unbounded.
-                                        // Using `weight()` here can lead to zero-width cells / blank content.
-                                        // Fixed column widths keeps alignment stable and matches the website-style tables.
                                         modifier = Modifier.wrapContentWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp) // Maintain spacing between cells
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        row.cells.forEach { cell ->
+                                        var colIdx = 0
+                                        for (cell in row.cells) {
+                                            while (spannedColumns.containsKey(colIdx)) {
+                                                Spacer(modifier = Modifier.width(baseCellWidth))
+                                                colIdx++
+                                            }
+                                            val isTodayRow = rowIndex == todayRowIndex
                                             TableCell(
                                                 cellContent = cell,
                                                 isHeader = row.isHeader,
+                                                isToday = isTodayRow,
                                                 modifier = Modifier
                                                     .width(baseCellWidth * cell.colSpan)
                                                     .height(64.dp)
                                             )
+                                            if (cell.rowSpan > 1) {
+                                                for (c in colIdx until colIdx + cell.colSpan) {
+                                                    spannedColumns[c] = cell.rowSpan - 1
+                                                }
+                                            }
+                                            colIdx += cell.colSpan
+                                        }
+                                        while (spannedColumns.containsKey(colIdx)) {
+                                            Spacer(modifier = Modifier.width(baseCellWidth))
+                                            colIdx++
                                         }
                                     }
+                                    for ((col, remaining) in spannedColumns) {
+                                        spannedColumns[col] = remaining - 1
+                                    }
+                                    spannedColumns.entries.removeAll { it.value <= 0 }
                                 }
                             }
                         }
@@ -190,14 +240,18 @@ fun ScheduleDetailScreen(
 }
 
 @Composable
-fun RowScope.TableCell(cellContent: ScheduleCellContent, isHeader: Boolean, modifier: Modifier = Modifier) {
-    val backgroundColor = if (isHeader) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+fun RowScope.TableCell(cellContent: ScheduleCellContent, isHeader: Boolean, isToday: Boolean = false, modifier: Modifier = Modifier) {
+    val backgroundColor = when {
+        isToday -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
+        isHeader -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
     val contentColor = if (isHeader) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
     val fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal
     val textStyle = if (isHeader) MaterialTheme.typography.labelSmall else MaterialTheme.typography.bodySmall
 
     Surface(
-        modifier = modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant), // Apply border to the passed modifier
+        modifier = modifier.border(1.dp, if (isToday) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outlineVariant),
         color = backgroundColor,
         contentColor = contentColor,
         shape = MaterialTheme.shapes.extraSmall
@@ -209,7 +263,7 @@ fun RowScope.TableCell(cellContent: ScheduleCellContent, isHeader: Boolean, modi
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = cellContent.text.ifBlank { "-" }, // Display "-" for empty fields
+                text = cellContent.text.ifBlank { "-" },
                 style = textStyle,
                 fontWeight = fontWeight,
                 textAlign = TextAlign.Center,
@@ -218,4 +272,17 @@ fun RowScope.TableCell(cellContent: ScheduleCellContent, isHeader: Boolean, modi
             )
         }
     }
+}
+
+private fun isDateInWeek(weekTitle: String?, today: LocalDate): Boolean {
+    if (weekTitle == null) return false
+    val datePattern = Regex("""(\d{2})\.(\d{2})\.(\d{4})""")
+    val dates = datePattern.findAll(weekTitle).map { matchResult ->
+        val (day, month, year) = matchResult.destructured
+        LocalDate.of(year.toInt(), month.toInt(), day.toInt())
+    }.toList()
+    if (dates.isEmpty()) return false
+    val startDate = dates.first()
+    val endDate = dates.last()
+    return today >= startDate && today <= endDate
 }

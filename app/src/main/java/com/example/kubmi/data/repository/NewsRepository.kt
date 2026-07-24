@@ -6,9 +6,8 @@ import androidx.annotation.RequiresApi
 import com.example.kubmi.data.local.dao.NewsDao
 import com.example.kubmi.data.local.entity.NewsEntity
 import com.example.kubmi.data.remote.WebScraper
-import com.example.kubmi.util.ParserCache
-import com.example.kubmi.util.PdfToImageConverter
 import com.example.kubmi.util.ImageProcessingUtils
+import com.example.kubmi.util.ParserCache
 import com.example.kubmi.domain.model.News
 import com.example.kubmi.domain.model.NewsContentBlock
 import com.google.gson.Gson
@@ -22,7 +21,9 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
+import java.io.File
 import java.net.UnknownHostException
+import java.net.URI
 import javax.inject.Inject
 
 import com.example.kubmi.domain.repository.NewsRepository as DomainNewsRepository
@@ -31,7 +32,6 @@ class NewsRepositoryImpl @Inject constructor(
     private val newsDao: NewsDao,
     private val webScraper: WebScraper,
     private val parserCache: ParserCache,
-    private val pdfConverter: PdfToImageConverter,
     private val imageUtils: ImageProcessingUtils
 ) : DomainNewsRepository {
     private val gson = Gson()
@@ -120,11 +120,19 @@ class NewsRepositoryImpl @Inject constructor(
                                 }
 
                                 // Cleanup old news images only if we actually have news to show
-                                val currentImageFiles = mergedRegular.mapNotNull { 
+                                val coverImageFiles = mergedRegular.mapNotNull { 
                                     if (it.imageUrl?.startsWith("file://") == true) it.imageUrl.substringAfterLast("/") else null 
                                 }.toSet()
-                                if (currentImageFiles.isNotEmpty()) {
-                                    imageUtils.cleanOldImages(currentImageFiles)
+                                val articleImageFiles = regularNewsInDb.flatMap { entity ->
+                                    try {
+                                        val blocks = gson.fromJson<List<NewsContentBlock>>(entity.contentBlocksJson ?: "", object : TypeToken<List<NewsContentBlock>>() {}.type)
+                                        blocks.filter { it.type == NewsContentBlock.TYPE_IMAGE && it.imageUrl?.startsWith("file://") == true }
+                                              .mapNotNull { it.imageUrl?.substringAfterLast("/") }
+                                    } catch (_: Exception) { emptyList() }
+                                }.toSet()
+                                val allKeepFiles = coverImageFiles + articleImageFiles
+                                if (allKeepFiles.isNotEmpty()) {
+                                    imageUtils.cleanOldImages(allKeepFiles)
                                 }
 
                                 // Save regular news
@@ -132,46 +140,7 @@ class NewsRepositoryImpl @Inject constructor(
                             }
                         }
 
-                        // 2. SCRAPE AND PROCESS PDF SLIDES
-                        try {
-                            val pdfNewsLinks = webScraper.scrapeGoChsPdfs()
-                            if (pdfNewsLinks.isNotEmpty()) {
-                                val pdfSlides = mutableListOf<News>()
-                                for (item in pdfNewsLinks) {
-                                    val pdfUrl = item.imageUrl ?: continue
-                                    try {
-                                        val localPaths = pdfConverter.convertPdfUrlToImages(pdfUrl)
-                                        if (localPaths.isNotEmpty()) {
-                                            localPaths.forEachIndexed { index, path ->
-                                                pdfSlides.add(item.copy(
-                                                    id = "${item.id}_page_$index",
-                                                    title = if (localPaths.size > 1) "${item.title} (стр. ${index + 1})" else item.title,
-                                                    imageUrl = "file://$path",
-                                                    isPdfSlide = true
-                                                ))
-                                            }
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.e("NewsRepository", "Failed to process specific PDF: $pdfUrl. ${e.message}")
-                                    }
-                                }
-                                
-                                if (pdfSlides.isNotEmpty()) {
-                                    val currentHashes = pdfNewsLinks.mapNotNull { it.imageUrl?.hashCode()?.toString() }.toSet()
-                                    pdfConverter.cleanOldSlides(currentHashes)
-                                    newsDao.insertAll(pdfSlides.map { it.toEntity().copy(timestamp = System.currentTimeMillis()) })
-                                    Log.d("NewsRepository", "Successfully saved ${pdfSlides.size} PDF slides")
-                                }
-                            }
-                        } catch (e: Exception) {
-                            if (e is UnknownHostException) {
-                                Log.w("NewsRepository", "Offline: Could not resolve host for PDF list")
-                            } else {
-                                Log.e("NewsRepository", "Global PDF processing block failed", e)
-                            }
-                        }
-
-                        // 3. Final update Parser Cache for UI
+                        // 2. Final update Parser Cache for UI
                         val finalRegularNews = newsDao.getAllNewsSync().map { it.toDomain() }
                         if (finalRegularNews.isNotEmpty()) {
                             parserCache.writeNews(finalRegularNews)
@@ -193,18 +162,19 @@ class NewsRepositoryImpl @Inject constructor(
     override suspend fun refreshNewsArticle(id: String) {
         if (id.isBlank()) return
         withContext(NonCancellable + Dispatchers.IO) {
+            val existing = newsDao.getNewsById(id)
             try {
-                val existing = newsDao.getNewsById(id)
                 val scraped = webScraper.scrapeNewsArticle(id)
                 
                 val processedBlocks = scraped.blocks.map { block ->
                     if (block.type == NewsContentBlock.TYPE_IMAGE && block.imageUrl != null && block.imageUrl.startsWith("http")) {
-                        val fileName = "article_${id.hashCode()}_${block.imageUrl.hashCode()}.jpg"
-                        val localPath = imageUtils.downloadAndProcessImage(block.imageUrl, fileName)
+                        val remoteUrl = block.imageUrl
+                        val fileName = "article_${id.hashCode()}_${remoteUrl.hashCode()}.jpg"
+                        val localPath = imageUtils.downloadAndProcessImage(remoteUrl, fileName)
                         if (localPath != null) {
-                            block.copy(imageUrl = localPath)
+                            block.copy(imageUrl = localPath, remoteImageUrl = remoteUrl)
                         } else {
-                            block
+                            block.copy(remoteImageUrl = remoteUrl)
                         }
                     } else {
                         block
@@ -271,7 +241,42 @@ class NewsRepositoryImpl @Inject constructor(
                 } else {
                     Timber.e(e, "Error refreshing news article: %s", id)
                 }
+                // Scrape failed — repair any stale cached images referenced by existing blocks
+                try {
+                    repairStaleArticleImages(id, existing)
+                } catch (_: Exception) {}
             }
+        }
+    }
+
+    private suspend fun repairStaleArticleImages(id: String, existing: NewsEntity?) {
+        val json = existing?.contentBlocksJson ?: return
+        val existingBlocks = try {
+            gson.fromJson<List<NewsContentBlock>>(json, object : TypeToken<List<NewsContentBlock>>() {}.type)
+        } catch (_: Exception) { return }
+
+        var repaired = false
+        val repairedBlocks = existingBlocks.map { block ->
+            if (block.type == NewsContentBlock.TYPE_IMAGE && block.imageUrl?.startsWith("file://") == true) {
+                try {
+                    val file = File(URI(block.imageUrl))
+                    if (!file.exists()) {
+                        val remoteUrl = block.remoteImageUrl ?: return@map block
+                        if (!remoteUrl.startsWith("http")) return@map block
+                        val fileName = "article_${id.hashCode()}_${remoteUrl.hashCode()}.jpg"
+                        val localPath = imageUtils.downloadAndProcessImage(remoteUrl, fileName)
+                        if (localPath != null) {
+                            repaired = true
+                            return@map block.copy(imageUrl = localPath, remoteImageUrl = remoteUrl)
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+            block
+        }
+        if (repaired) {
+            newsDao.upsert(existing.copy(contentBlocksJson = gson.toJson(repairedBlocks)))
+            Log.d("NewsRepository", "Repaired stale images for article: $id")
         }
     }
 

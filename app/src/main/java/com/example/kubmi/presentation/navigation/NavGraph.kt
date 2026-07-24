@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
@@ -22,17 +21,18 @@ import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import com.example.kubmi.presentation.screens.about.AboutScreen
 import com.example.kubmi.presentation.screens.admin.AdminScreen
-import com.example.kubmi.presentation.screens.admin.KioskSettingsScreen
+import com.example.kubmi.presentation.screens.admin.settings.BellScheduleScreen
+import com.example.kubmi.presentation.screens.admin.settings.DataSyncScreen
+import com.example.kubmi.presentation.screens.admin.settings.KioskModeScreen
+import com.example.kubmi.presentation.screens.admin.settings.PermissionsScreen
+import com.example.kubmi.presentation.screens.admin.settings.ScreensaverScreen
+import com.example.kubmi.presentation.screens.admin.settings.SettingsHubScreen
 import com.example.kubmi.presentation.screens.main.MainScreen
 import com.example.kubmi.presentation.screens.news.NewsDetailScreen
 import com.example.kubmi.presentation.screens.news.NewsScreen
 import com.example.kubmi.presentation.screens.schedule.ScheduleDetailScreen
 import com.example.kubmi.presentation.screens.schedule.StudentScheduleScreen
 import com.example.kubmi.presentation.screens.schedule.TeacherScheduleScreen
-import com.example.kubmi.util.KioskPermissionManager
-import com.example.kubmi.kiosk.AdvancedKioskManager
-import com.example.kubmi.util.SecurePreferences
-import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.accompanist.navigation.animation.AnimatedNavHost
 import com.google.accompanist.navigation.animation.composable
 
@@ -151,17 +151,58 @@ fun NavGraph(
             AdminScreen(navController)
         }
         composable(
-            Screen.KioskSettings.route,
+            Screen.SettingsHub.route,
             enterTransition = enter,
             exitTransition = exit,
             popEnterTransition = popEnter,
             popExitTransition = popExit
         ) {
-            val context = LocalContext.current
-            val permissionManager = remember { KioskPermissionManager(context) }
-            val kioskManager = remember { AdvancedKioskManager(context) }
-            val securePreferences = remember { SecurePreferences(context) }
-            KioskSettingsScreen(navController, permissionManager, kioskManager, securePreferences)
+            SettingsHubScreen(navController)
+        }
+        composable(
+            Screen.SettingsKioskMode.route,
+            enterTransition = enter,
+            exitTransition = exit,
+            popEnterTransition = popEnter,
+            popExitTransition = popExit
+        ) {
+            KioskModeScreen(navController)
+        }
+        composable(
+            Screen.SettingsPermissions.route,
+            enterTransition = enter,
+            exitTransition = exit,
+            popEnterTransition = popEnter,
+            popExitTransition = popExit
+        ) {
+            PermissionsScreen(navController)
+        }
+        composable(
+            Screen.SettingsScreensaver.route,
+            enterTransition = enter,
+            exitTransition = exit,
+            popEnterTransition = popEnter,
+            popExitTransition = popExit
+        ) {
+            ScreensaverScreen(navController)
+        }
+        composable(
+            Screen.SettingsData.route,
+            enterTransition = enter,
+            exitTransition = exit,
+            popEnterTransition = popEnter,
+            popExitTransition = popExit
+        ) {
+            DataSyncScreen(navController)
+        }
+        composable(
+            Screen.SettingsBellSchedule.route,
+            enterTransition = enter,
+            exitTransition = exit,
+            popEnterTransition = popEnter,
+            popExitTransition = popExit
+        ) {
+            BellScheduleScreen(navController)
         }
     }
 }
@@ -177,7 +218,12 @@ private fun rememberRouteOrder(): Map<String, Int> = remember {
         Screen.ScheduleDetail.route to 2,
         Screen.About.route to 1,
         Screen.Admin.route to 1,
-        Screen.KioskSettings.route to 2
+        Screen.SettingsHub.route to 1,
+        Screen.SettingsKioskMode.route to 2,
+        Screen.SettingsPermissions.route to 2,
+        Screen.SettingsScreensaver.route to 2,
+        Screen.SettingsData.route to 2,
+        Screen.SettingsBellSchedule.route to 2
     )
 }
 

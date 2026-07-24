@@ -2,43 +2,56 @@
 *.iml
 *.ipr
 *.iws
+
 .gradle/
 **/.gradle/
+build/
+**/build/
+app/build/
+app/release/
+
 local.properties
-/local.properties
+**/local.properties
 
 ## IDE
 .idea/
-/.idea/
+**/.idea/
 *.swp
 .DS_Store
 Thumbs.db
+*.dS.stores
+
 .kotlin/
+**/.kotlin/
+
+## CI / Assistant
+.circleci/
 .codeassistant/
 .codeassistantmodes
+.continue/
+
+## Backup / docs
 backup/
+*.md
+!README.md
 
 ## Build outputs
-build/
-/build/
-**/build/
 captures/
-/captures/
+**/captures/
 *.apk
 *.ap_
 *.aab
-/*.png
-/*.jpg
-/*.jpeg
-/*.webp
-/*.htm
-/*.html
+*.dex
+*.class
+*.log
 
-## Native build
+## Native
 .externalNativeBuild/
 **/.externalNativeBuild/
 .cxx/
 **/.cxx/
+*.so
+*.o
 
 ## Signing / secrets
 *.jks
@@ -48,4 +61,20 @@ captures/
 *.key
 **/google-services.json
 *.env
+**/secrets.properties
+**/signing.properties
 keystore.properties
+
+## Misc
+*.crash
+*.hprof
+*.pid
+*.ser
+*.orig
+*.patch
+*.tmp
+*~
+.DS_Store?
+*.swp
+*.swo
+*~

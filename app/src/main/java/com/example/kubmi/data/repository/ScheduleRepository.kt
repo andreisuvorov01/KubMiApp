@@ -11,6 +11,7 @@ import timber.log.Timber
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 
 class ScheduleRepositoryImpl @Inject constructor(
@@ -48,6 +49,8 @@ class ScheduleRepositoryImpl @Inject constructor(
             parserCache.writeSchedule(ownerType = "group", ownerTitle = groupTitle, data = schedule)
             // Removed database operations (deleteScheduleByGroup, insertAll) for detailed schedules
             schedule
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("KubMI_Repo", "Error refreshing student schedule: ${e.message}", e)
             emptyList()
@@ -80,6 +83,8 @@ class ScheduleRepositoryImpl @Inject constructor(
             parserCache.writeSchedule(ownerType = "teacher", ownerTitle = teacherTitle, data = schedule)
             // Removed database operations (deleteScheduleByTeacher, insertAll) for detailed schedules
             schedule
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("KubMI_Repo", "Error refreshing teacher schedule: ${e.message}", e)
             emptyList()
@@ -106,6 +111,8 @@ class ScheduleRepositoryImpl @Inject constructor(
 
             Log.i("KubMI_Repo", "getStudentGroupsTable(): headers=${table.headers.size}, rows=${table.rows.size}, nonEmptyCells=$nonEmpty")
             table
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e("KubMI_Repo", "Error parsing student groups table from web: ${e.message}", e)
             StudentGroupsTable(headers = emptyList(), rows = emptyList())
@@ -138,6 +145,8 @@ class ScheduleRepositoryImpl @Inject constructor(
             
             Timber.d("Parsed ${groups.size} group entries from student schedule page")
             groups
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.e(e, "Error parsing groups from web")
             emptyList()
@@ -174,10 +183,10 @@ class ScheduleRepositoryImpl @Inject constructor(
             // #endregion
             Log.i("KubMI_Repo", "getAllTeachers(): ${teachers.size} entries parsed")
             teachers
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            // #region agent log
             Log.e("KubMI_Debug", "[D] getAllTeachers: EXCEPTION - ${e.javaClass.simpleName}: ${e.message}")
-            // #endregion
             Log.e("KubMI_Repo", "Error parsing teachers from web: ${e.message}", e)
             emptyList()
         }

@@ -9,7 +9,8 @@ data class NewsContentBlock(
     val text: String? = null,
     val imageUrl: String? = null,
     val videoUrl: String? = null,
-    val alt: String? = null
+    val alt: String? = null,
+    val remoteImageUrl: String? = null
 ) {
     companion object {
         const val TYPE_TEXT = "text"

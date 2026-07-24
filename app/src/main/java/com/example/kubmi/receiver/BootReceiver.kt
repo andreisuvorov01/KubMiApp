@@ -33,7 +33,6 @@ class BootReceiver : BroadcastReceiver() {
     
     override fun onReceive(context: Context, intent: Intent) {
         Log.d(TAG, "Received intent: ${intent.action}")
-        KioskService.clearTemporaryExit(context)
         
         when (intent.action) {
             // Основные события загрузки
@@ -53,6 +52,8 @@ class BootReceiver : BroadcastReceiver() {
      */
     private fun setupKioskModeAtBoot(context: Context) {
         Log.d(TAG, "Setting up Kiosk Mode at boot")
+        // A maintenance window must never survive a reboot or app update.
+        KioskService.clearTemporaryExit(context)
         
         // Использовать Handler с задержкой для дождаться полной загрузки системы
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
@@ -130,18 +131,18 @@ class BootReceiver : BroadcastReceiver() {
             context.startService(appMonitorIntent)
             Log.d(TAG, "✓ AppMonitorService started")
             
-            // Overlay нужен только как fallback без настоящего Device Owner Lock Task.
-            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE)
-                as DevicePolicyManager
-            if (!dpm.isDeviceOwnerApp(context.packageName)) {
+            // Запуск OverlayService (если доступен)
+            val devicePolicyManager =
+                context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            if (!devicePolicyManager.isDeviceOwnerApp(context.packageName)) {
                 val overlayIntent = Intent(context, com.example.kubmi.OverlayService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(overlayIntent)
                 } else {
                     context.startService(overlayIntent)
                 }
-                Log.d(TAG, "✓ OverlayService started in fallback mode")
             }
+            Log.d(TAG, "✓ OverlayService started")
             
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start background services", e)

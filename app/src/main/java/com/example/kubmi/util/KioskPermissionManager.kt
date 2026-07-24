@@ -10,6 +10,7 @@ import android.os.Process
 import android.provider.Settings
 import com.example.kubmi.receiver.DeviceAdminReceiver
 import com.example.kubmi.service.KioskAccessibilityService
+import com.example.kubmi.kiosk.GaokeViewKioskDetector
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,6 +32,7 @@ class KioskPermissionManager @Inject constructor(
         val isUsageStatsEnabled: Boolean,
         val isDeviceAdminEnabled: Boolean,
         val isDefaultLauncher: Boolean,
+        val isGaokeViewKioskActive: Boolean,
         val overallProtectionLevel: ProtectionLevel
     )
     
@@ -49,6 +51,7 @@ class KioskPermissionManager @Inject constructor(
         val accessibility = isAccessibilityServiceEnabled()
         val usageStats = isUsageStatsPermissionGranted()
         val launcher = isDefaultLauncher()
+        val gaokeViewActive = GaokeViewKioskDetector.isGaokeViewKioskActive(context)
         
         // #region agent log
         DebugLogger.log("A", "KioskPermissionManager:getPermissionStatus", "Permission status", mapOf("accessibility" to accessibility, "usageStats" to usageStats, "launcher" to launcher))
@@ -56,11 +59,12 @@ class KioskPermissionManager @Inject constructor(
         
         val level = calculateProtectionLevel(accessibility, usageStats, launcher)
         
-        return KioskPermissionStatus(
+return KioskPermissionStatus(
             isAccessibilityEnabled = accessibility,
             isUsageStatsEnabled = usageStats,
-            isDeviceAdminEnabled = false, // Device admin removed
+            isDeviceAdminEnabled = false,
             isDefaultLauncher = launcher,
+            isGaokeViewKioskActive = gaokeViewActive,
             overallProtectionLevel = level
         )
     }

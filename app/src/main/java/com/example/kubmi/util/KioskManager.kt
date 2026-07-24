@@ -8,6 +8,7 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import com.example.kubmi.kiosk.GaokeViewKioskDetector
 
 object KioskManager {
     fun enableKioskMode(activity: Activity) {
@@ -41,6 +42,8 @@ object KioskManager {
     }
 
     fun startLockTaskIfAllowed(activity: Activity) {
+        if (GaokeViewKioskDetector.isGaokeViewKioskActive(activity)) return
+
         try {
             val dpm = activity.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
             if (dpm.isLockTaskPermitted(activity.packageName)) {

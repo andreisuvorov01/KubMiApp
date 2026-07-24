@@ -1,9 +1,11 @@
 package com.example.kubmi.presentation.screens.main
 
+import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.kubmi.domain.repository.NewsRepository
 import com.example.kubmi.domain.model.News
+import com.example.kubmi.util.SecurePreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -25,7 +27,8 @@ import org.json.JSONObject
  */
 @HiltViewModel
 class MainViewModel @Inject constructor(
-    private val newsRepository: NewsRepository
+    private val newsRepository: NewsRepository,
+    private val securePreferences: SecurePreferences
 ) : ViewModel() {
 
     // #region agent log
@@ -66,6 +69,32 @@ class MainViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(stopTimeoutMillis = 5000),
             initialValue = emptyList()
         )
+
+    private val _bellScheduleText = MutableStateFlow(securePreferences.getBellScheduleText())
+    val bellScheduleText: StateFlow<String> = _bellScheduleText.asStateFlow()
+
+    private val _mainScreenTitle = MutableStateFlow(securePreferences.getMainScreenTitle())
+    val mainScreenTitle: StateFlow<String> = _mainScreenTitle.asStateFlow()
+
+    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
+        when (key) {
+            "bell_schedule_text" -> {
+                _bellScheduleText.value = prefs.getString(key, "") ?: ""
+            }
+            "main_screen_title" -> {
+                _mainScreenTitle.value = prefs.getString(key, "") ?: ""
+            }
+        }
+    }
+
+    init {
+        securePreferences.registerPreferenceChangeListener(prefsListener)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        securePreferences.unregisterPreferenceChangeListener(prefsListener)
+    }
 
     private val _refreshState = MutableStateFlow<RefreshState>(RefreshState.Idle)
     val refreshState: StateFlow<RefreshState> = _refreshState.asStateFlow()

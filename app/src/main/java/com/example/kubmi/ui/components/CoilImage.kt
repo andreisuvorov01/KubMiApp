@@ -95,7 +95,6 @@ fun CoilImage(
             .precision(Precision.INEXACT)
             .scale(if (contentScale == ContentScale.Crop) Scale.FILL else Scale.FIT)
             .crossfade(true)
-            .allowHardware(false) // avoid GPU bitmap pressure on weaker devices
             .build()
     }
 

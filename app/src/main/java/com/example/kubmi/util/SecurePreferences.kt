@@ -157,7 +157,64 @@ class SecurePreferences @Inject constructor(@ApplicationContext private val cont
     fun getScreensaverDelay(): Int {
         return preferences.getInt("screensaver_delay", 300) // Default 5 minutes
     }
-    
+
+    fun saveKioskModeEnabled(enabled: Boolean) {
+        preferences.edit().putBoolean("kiosk_mode_enabled", enabled).apply()
+    }
+
+    fun isKioskModeEnabled(): Boolean {
+        return preferences.getBoolean("kiosk_mode_enabled", true) // Default true for backward compat
+    }
+
+    // Data sync settings (AdminSettings)
+    fun saveDataRefreshInterval(minutes: Long) {
+        preferences.edit().putLong("data_refresh_interval", minutes).apply()
+    }
+
+    fun getDataRefreshInterval(): Long {
+        return preferences.getLong("data_refresh_interval", 30) // Default 30 min
+    }
+
+    fun saveApiEndpoint(url: String) {
+        preferences.edit().putString("api_endpoint", url).apply()
+    }
+
+    fun getApiEndpoint(): String {
+        return preferences.getString("api_endpoint", "https://kubmi.ru") ?: "https://kubmi.ru"
+    }
+
+    fun saveAutoStartEnabled(enabled: Boolean) {
+        preferences.edit().putBoolean("auto_start_enabled", enabled).apply()
+    }
+
+    fun isAutoStartEnabled(): Boolean {
+        return preferences.getBoolean("auto_start_enabled", true)
+    }
+
+    fun saveBellScheduleText(text: String) {
+        preferences.edit().putString("bell_schedule_text", text).apply()
+    }
+
+    fun getBellScheduleText(): String {
+        return preferences.getString("bell_schedule_text", "") ?: ""
+    }
+
+    fun saveMainScreenTitle(title: String) {
+        preferences.edit().putString("main_screen_title", title).apply()
+    }
+
+    fun getMainScreenTitle(): String {
+        return preferences.getString("main_screen_title", "") ?: ""
+    }
+
+    fun registerPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+    }
+
+    fun unregisterPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        preferences.unregisterOnSharedPreferenceChangeListener(listener)
+    }
+
     private fun getOrCreateSecretKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE)
         keyStore.load(null)

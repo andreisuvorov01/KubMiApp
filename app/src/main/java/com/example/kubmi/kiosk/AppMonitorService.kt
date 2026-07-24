@@ -38,7 +38,10 @@ class AppMonitorService : Service() {
     }
     
     private fun checkForegroundApp() {
-        if (isTemporaryExitAllowed()) return
+        if (KioskService.isTemporaryExitAllowed(this)) return
+
+        // If the board's own kiosk (Lock Task) is managing us, skip — avoid restart loops.
+        if (isSystemLockTaskActive()) return
 
         val time = System.currentTimeMillis()
         val stats = usageStatsManager.queryUsageStats(
@@ -56,17 +59,37 @@ class AppMonitorService : Service() {
         }
     }
 
-    private fun isTemporaryExitAllowed(): Boolean {
-        return KioskService.isTemporaryExitAllowed(this)
+    private fun isSystemLockTaskActive(): Boolean {
+        return try {
+            val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                am.lockTaskModeState != android.app.ActivityManager.LOCK_TASK_MODE_NONE
+            } else {
+                @Suppress("DEPRECATION")
+                am.isInLockTaskMode
+            }
+        } catch (_: Exception) { false }
     }
     
     private fun returnToKiosk() {
-        val intent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+        // Prefer moveToFront (no BAL restriction) — works when a task already exists
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            val task = am.appTasks.firstOrNull { it.taskInfo?.baseActivity?.packageName == packageName }
+            if (task != null) {
+                runCatching { task.moveToFront() }
+                return
+            }
         }
-        startActivity(intent)
+        // Fallback: use a full-screen PendingIntent to work around BAL
+        val intent = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        val pi = android.app.PendingIntent.getActivity(
+            this, 0, intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        runCatching { pi.send() }
     }
     
     override fun onDestroy() {

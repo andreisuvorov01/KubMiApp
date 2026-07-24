@@ -23,6 +23,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.kubmi.MainActivity
 import com.example.kubmi.R
+import com.example.kubmi.kiosk.KeyEventBlocker
 import com.example.kubmi.receiver.KioskRelockReceiver
 
 /**
@@ -59,6 +60,8 @@ class KioskService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun ensureAppInForeground() {
+        if (isSystemLockTaskActive()) return
+
         val inForeground = isAppInForeground()
         val tempExitAllowed = isTemporaryExitAllowed(this)
         updateMaintenanceNotification()
@@ -68,6 +71,7 @@ class KioskService : Service() {
         // #endregion
         
         if (inForeground || tempExitAllowed) return
+        if (KeyEventBlocker.foregroundReturnPaused) return
 
         // #region agent log
         com.example.kubmi.util.DebugLogger.log("C", "KioskService:ensureAppInForeground", "App not in foreground, bringing back", mapOf())
@@ -87,6 +91,20 @@ class KioskService : Service() {
                 }
                 startActivity(launchIntent, options.toBundle()) 
             }
+        }
+    }
+
+    private fun isSystemLockTaskActive(): Boolean {
+        return try {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
+            } else {
+                @Suppress("DEPRECATION")
+                am.isInLockTaskMode
+            }
+        } catch (_: Exception) {
+            false
         }
     }
 

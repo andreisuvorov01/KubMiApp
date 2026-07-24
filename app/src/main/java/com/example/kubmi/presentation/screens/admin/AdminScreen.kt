@@ -316,7 +316,7 @@ fun AdminMainScreen(
         ) {
             // Kiosk Settings Button - most important
             Button(
-                onClick = { navController.navigate(Screen.KioskSettings.route) },
+                onClick = { navController.navigate(Screen.SettingsHub.route) },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(stringResource(R.string.kiosk_settings_title))

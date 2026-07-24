@@ -2,6 +2,8 @@ package com.example.kubmi.data.remote
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import android.util.Log
@@ -13,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import javax.inject.Inject
@@ -31,213 +34,188 @@ class SftpDownloader @Inject constructor(
         private const val SFTP_PASSWORD = "eS8h882JP9"
         private const val SFTP_REMOTE_DIR = "/pdf"
         private const val CONNECT_TIMEOUT = 15000
-        private const val SOCKET_TIMEOUT = 30000
-        private const val MAX_PARALLEL_CONVERSIONS = 3
-        private const val BUFFER_SIZE = 8192 * 4  // 32KB buffer for faster transfer
+        private const val TARGET_WIDTH = 1280
+        private const val JPEG_QUALITY = 80
+        private const val MIN_PDF_SIZE = 512L
+        private const val CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000L // 1 day
     }
 
     suspend fun downloadPdfFiles(): List<File> = withContext(Dispatchers.IO) {
-        val imageFiles = mutableListOf<File>()
+        val pdfDir = File(context.cacheDir, "sftp_pdf").also { it.mkdirs() }
+        val imageDir = File(context.cacheDir, "sftp_images").also { it.mkdirs() }
+
+        val cachedImages = imageDir.listFiles { f -> f.extension == "jpg" }
+            ?.sortedBy { it.name }
+            ?.takeIf { it.isNotEmpty() }
+        val cacheAge = cachedImages?.minOfOrNull { System.currentTimeMillis() - it.lastModified() } ?: Long.MAX_VALUE
+        if (cachedImages != null && cacheAge < CACHE_MAX_AGE_MS) {
+            Log.d(TAG, "✓ Using ${cachedImages.size} cached images (age ${cacheAge / 60000}min)")
+            return@withContext cachedImages
+        }
+        if (cachedImages != null) {
+            Log.d(TAG, "Cache expired (age ${cacheAge / 3600000}h), re-downloading")
+            cachedImages.forEach { it.delete() }
+        }
+
+        // Отдельная сессия только для получения списка файлов
+        val pdfEntries = listRemoteFiles() ?: return@withContext emptyList()
+        Log.d(TAG, "✓ Found ${pdfEntries.size} PDF files")
+
+        // Каждый файл качается через полностью независимую сессию
+        val downloadedPdfs = pdfEntries.map { (filename, remoteSize) ->
+            async(Dispatchers.IO) {
+                val pdfFile = File(pdfDir, filename)
+                if (pdfFile.exists() && pdfFile.length() == remoteSize && isValidPdf(pdfFile)) {
+                    Log.d(TAG, "→ Cached: $filename")
+                    return@async pdfFile
+                }
+                downloadFileOwnSession(filename, pdfFile)
+            }
+        }.awaitAll().filterNotNull()
+
+        if (downloadedPdfs.isEmpty()) return@withContext emptyList()
+
+        // Конвертируем все PDF параллельно
+        downloadedPdfs.map { pdf ->
+            async(Dispatchers.Default) { convertPdfToImages(pdf, imageDir) }
+        }.awaitAll().flatten()
+    }
+
+    private fun listRemoteFiles(): List<Pair<String, Long>>? {
         var session: Session? = null
         var channel: ChannelSftp? = null
-
-        try {
-            Log.d(TAG, "→ Connecting to SFTP server: $SFTP_HOST")
-            
-            val jsch = JSch()
-            session = jsch.getSession(SFTP_USER, SFTP_HOST, SFTP_PORT)
-            session.setPassword(SFTP_PASSWORD)
-            
-            val config = java.util.Properties()
-            config["StrictHostKeyChecking"] = "no"
-            config["PreferredAuthentications"] = "password"
-            session.setConfig(config)
-            session.timeout = CONNECT_TIMEOUT
-            session.setServerAliveInterval(SOCKET_TIMEOUT)
-            
-            session.connect(CONNECT_TIMEOUT)
-            Log.d(TAG, "✓ SFTP session connected")
-            
+        return try {
+            session = createSession()
             channel = session.openChannel("sftp") as ChannelSftp
             channel.connect(CONNECT_TIMEOUT)
-            Log.d(TAG, "✓ SFTP channel opened")
-            
-            channel.cd(SFTP_REMOTE_DIR)
-            
-            val filesList = channel.ls(SFTP_REMOTE_DIR)
-            val pdfFiles = filesList.mapNotNull { entry ->
-                val lsEntry = entry as ChannelSftp.LsEntry
-                if (lsEntry.filename.endsWith(".pdf", ignoreCase = true) && !lsEntry.attrs.isDir) {
-                    lsEntry.filename
-                } else null
+            channel.ls(SFTP_REMOTE_DIR).mapNotNull { entry ->
+                val e = entry as ChannelSftp.LsEntry
+                if (e.filename.endsWith(".pdf", ignoreCase = true) && !e.attrs.isDir)
+                    e.filename to e.attrs.size
+                else null
             }
-            
-            Log.d(TAG, "✓ Found ${pdfFiles.size} PDF files in $SFTP_REMOTE_DIR")
-            
-            val pdfDir = File(context.cacheDir, "sftp_pdf")
-            val imageDir = File(context.cacheDir, "sftp_images")
-            if (!pdfDir.exists()) pdfDir.mkdirs()
-            if (!imageDir.exists()) imageDir.mkdirs()
-            
-            // Скачиваем и конвертируем параллельно
-            val downloadTimeStart = System.currentTimeMillis()
-            val conversionJobs = pdfFiles.map { filename ->
-                async {
-                    try {
-                        downloadAndConvertPdf(
-                            channel = channel,
-                            filename = filename,
-                            pdfDir = pdfDir,
-                            imageDir = imageDir
-                        )
-                    } catch (e: Exception) {
-                        Log.e(TAG, "✗ Failed to download/convert $filename", e)
-                        emptyList<File>()
-                    }
-                }
-            }
-            
-            // Ограничиваем параллельность для экономии памяти
-            val results = conversionJobs.windowed(MAX_PARALLEL_CONVERSIONS, MAX_PARALLEL_CONVERSIONS, partialWindows = true)
-                .flatMap { batch ->
-                    batch.awaitAll()
-                }.flatten()
-            
-            imageFiles.addAll(results)
-            
-            val totalTime = System.currentTimeMillis() - downloadTimeStart
-            Log.d(TAG, "✓ Created ${imageFiles.size} images from ${pdfFiles.size} PDFs in ${totalTime}ms")
-            
         } catch (e: Exception) {
-            Log.e(TAG, "✗ SFTP connection error", e)
+            Log.e(TAG, "✗ Failed to list remote files", e)
+            null
         } finally {
             channel?.disconnect()
             session?.disconnect()
-            Log.d(TAG, "✓ SFTP connection closed")
         }
-        
-        return@withContext imageFiles
     }
-    
-    /**
-     * Скачивает PDF файл с SFTP и конвертирует его в изображения
-     */
-    private suspend fun downloadAndConvertPdf(
-        channel: ChannelSftp,
-        filename: String,
-        pdfDir: File,
-        imageDir: File
-    ): List<File> = withContext(Dispatchers.IO) {
-        val pdfFile = File(pdfDir, filename)
-        
-        // Проверяем, не скачан ли уже этот файл
-        if (pdfFile.exists() && pdfFile.length() > 0) {
-            Log.d(TAG, "→ Using cached PDF: $filename (${pdfFile.length() / 1024}KB)")
-            return@withContext convertPdfToImages(pdfFile, imageDir)
+
+    private fun downloadFileOwnSession(filename: String, dest: File): File? {
+        val tmp = File(dest.parent, "${dest.name}.tmp")
+        var session: Session? = null
+        var channel: ChannelSftp? = null
+        return try {
+            session = createSession()
+            channel = session.openChannel("sftp") as ChannelSftp
+            channel.connect(CONNECT_TIMEOUT)
+            BufferedOutputStream(FileOutputStream(tmp), 65536).use { out ->
+                channel.get("$SFTP_REMOTE_DIR/$filename", out)
+            }
+            if (!isValidPdf(tmp)) {
+                Log.e(TAG, "✗ Invalid PDF after download: $filename")
+                tmp.delete()
+                return null
+            }
+            tmp.renameTo(dest)
+            Log.d(TAG, "✓ Downloaded: $filename (${dest.length() / 1024}KB)")
+            dest
+        } catch (e: Exception) {
+            Log.e(TAG, "✗ Failed: $filename", e)
+            tmp.delete()
+            dest.delete()
+            null
+        } finally {
+            channel?.disconnect()
+            session?.disconnect()
         }
-        
-        val downloadTimeStart = System.currentTimeMillis()
-        Log.d(TAG, "→ Downloading: $filename")
-        
-        // Скачиваем с большим буфером для скорости
-        FileOutputStream(pdfFile).use { fos ->
-            channel.get("$SFTP_REMOTE_DIR/$filename", fos)
-        }
-        
-        val time = System.currentTimeMillis() - downloadTimeStart
-        Log.d(TAG, "✓ Downloaded: $filename (${pdfFile.length() / 1024}KB) in ${time}ms")
-        
-        // Конвертируем PDF в изображения
-        return@withContext convertPdfToImages(pdfFile, imageDir)
     }
-    
-    /**
-     * Конвертирует PDF в изображения с оптимизированными параметрами
-     */
-    private suspend fun convertPdfToImages(pdfFile: File, outputDir: File): List<File> = withContext(Dispatchers.Default) {
+
+    private fun createSession(): Session {
+        val jsch = JSch()
+        val session = jsch.getSession(SFTP_USER, SFTP_HOST, SFTP_PORT)
+        session.setPassword(SFTP_PASSWORD)
+        session.setConfig("StrictHostKeyChecking", "no")
+        session.setConfig("PreferredAuthentications", "password")
+        session.setConfig("compression.s2c", "none")
+        session.setConfig("compression.c2s", "none")
+        session.timeout = CONNECT_TIMEOUT
+        session.connect(CONNECT_TIMEOUT)
+        return session
+    }
+
+    private fun isValidPdf(file: File): Boolean {
+        if (!file.exists() || file.length() < MIN_PDF_SIZE) return false
+        return try {
+            file.inputStream().use { stream ->
+                val header = ByteArray(5)
+                stream.read(header)
+                header.toString(Charsets.ISO_8859_1) == "%PDF-"
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun convertPdfToImages(pdfFile: File, outputDir: File): List<File> {
         val imageFiles = mutableListOf<File>()
         var pdfRenderer: PdfRenderer? = null
-        var fileDescriptor: ParcelFileDescriptor? = null
-        
+        var fd: ParcelFileDescriptor? = null
         try {
-            fileDescriptor = ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY)
-            pdfRenderer = PdfRenderer(fileDescriptor)
-            
-            val pageCount = pdfRenderer.pageCount
-            val convertTimeStart = System.currentTimeMillis()
-            Log.d(TAG, "→ Converting PDF: ${pdfFile.name} ($pageCount pages)")
-            
-            // Определяем качество на основе количества страниц
-            val quality = if (pageCount > 10) 70 else 85
-            
-            for (i in 0 until pageCount) {
+            fd = ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY)
+            pdfRenderer = PdfRenderer(fd)
+            for (i in 0 until pdfRenderer.pageCount) {
+                val imageFile = File(outputDir, "${pdfFile.nameWithoutExtension}_page_$i.jpg")
+                if (imageFile.exists() && imageFile.length() > 0) {
+                    imageFiles.add(imageFile)
+                    continue
+                }
                 val page = pdfRenderer.openPage(i)
                 try {
-                    // Оптимизированное разрешение: масштабируем до 1920 ширины для SFTP
-                    val targetWidth = 1920
-                    val scale = targetWidth.toFloat() / page.width.toFloat()
-                    val targetHeight = (page.height * scale).toInt()
+                    val scale = TARGET_WIDTH.toFloat() / page.width.toFloat()
+                    val h = min((page.height * scale).toInt(), TARGET_WIDTH * 2)
                     
-                    // Ограничиваем максимальную высоту
-                    val limitedHeight = min(targetHeight, 2880)
+                    // Проверяем валидность размеров
+                    if (TARGET_WIDTH <= 0 || h <= 0 || page.width <= 0 || page.height <= 0) {
+                        Log.w(TAG, "Invalid dimensions for page $i: ${page.width}x${page.height} -> ${TARGET_WIDTH}x$h")
+                        continue
+                    }
                     
-                    val bitmap = Bitmap.createBitmap(
-                        targetWidth,
-                        limitedHeight,
-                        Bitmap.Config.RGB_565  // Более компактный формат, чем ARGB_8888
-                    )
+                    val bitmap = Bitmap.createBitmap(TARGET_WIDTH, h, Bitmap.Config.ARGB_8888)
+                    bitmap.eraseColor(Color.WHITE)
                     
                     page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                     
-                    // Сохраняем как JPEG вместо PNG (более компактно)
-                    val imageFile = File(outputDir, "${pdfFile.nameWithoutExtension}_page_$i.jpg")
-                    FileOutputStream(imageFile).use { out ->
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
+                    FileOutputStream(imageFile).use { 
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) 
                     }
-                    
-                    if (imageFile.exists() && imageFile.length() > 0) {
-                        imageFiles.add(imageFile)
-                        Log.d(TAG, "✓ Page $i converted (${imageFile.length() / 1024}KB)")
-                    }
-                    
                     bitmap.recycle()
+                    if (imageFile.length() > 0) imageFiles.add(imageFile)
                 } finally {
                     page.close()
                 }
             }
-            
-            val time = System.currentTimeMillis() - convertTimeStart
-            Log.d(TAG, "✓ Conversion complete: ${pdfFile.name} in ${time}ms (${imageFiles.size} pages)")
-            
+            Log.d(TAG, "✓ Converted ${pdfFile.name}: ${imageFiles.size} pages")
         } catch (e: Exception) {
-            Log.e(TAG, "✗ Error converting PDF to images: ${pdfFile.name}", e)
+            Log.e(TAG, "✗ Convert error: ${pdfFile.name}", e)
         } finally {
             pdfRenderer?.close()
-            fileDescriptor?.close()
+            fd?.close()
         }
-        
-        return@withContext imageFiles
+        return imageFiles
     }
-    
-    /**
-     * Очистка старых файлов
-     */
+
     fun cleanupOldFiles(maxAgeDays: Int = 7) {
-        val pdfDir = File(context.cacheDir, "sftp_pdf")
-        val imageDir = File(context.cacheDir, "sftp_images")
         val now = System.currentTimeMillis()
         val maxAge = maxAgeDays * 24 * 60 * 60 * 1000L
-        
-        for (dir in listOf(pdfDir, imageDir)) {
-            if (dir.exists()) {
-                dir.listFiles()?.forEach { file ->
-                    if (now - file.lastModified() > maxAge) {
-                        if (file.delete()) {
-                            Log.d(TAG, "✓ Removed old file: ${file.name}")
-                        }
-                    }
-                }
-            }
+        listOf(File(context.cacheDir, "sftp_pdf"), File(context.cacheDir, "sftp_images")).forEach { dir ->
+            dir.listFiles()?.forEach { if (now - it.lastModified() > maxAge) it.delete() }
         }
+    }
+
+    fun invalidateImageCache() {
+        File(context.cacheDir, "sftp_images").listFiles()?.forEach { it.delete() }
     }
 }
